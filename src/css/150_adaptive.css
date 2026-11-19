@@ -1,0 +1,130 @@
+/* ==========================================================================
+   SKYDOMINION — 150_adaptive.css · адаптация под экран + проработанные модалки
+   Работает вместе с 150_adaptive.js, который ставит на <html>:
+     data-dev   = phone | tablet | desktop        data-orient = port | land
+     data-short = 1, если высота < 520 px         data-touch  = 1, если основной указатель — палец
+     data-kb    = 1, если открыта экранная клавиатура
+   и переменные: --vh (реальная высота окна), --kb (высота клавиатуры), --ui (масштаб крупных экранов).
+   Подключается ПОСЛЕДНИМ. Логика игры не затрагивается.
+   ========================================================================== */
+:root{
+  --vh:100dvh;--kb:0px;--ui:1;
+  --sx-gap:clamp(8px,2.4vw,16px);
+  --sx-safe-t:var(--safe-t,env(safe-area-inset-top,0px));--sx-safe-b:var(--safe-b,env(safe-area-inset-bottom,0px));
+  --sx-safe-l:var(--safe-l,env(safe-area-inset-left,0px));--sx-safe-r:var(--safe-r,env(safe-area-inset-right,0px));
+  --sx-ease:cubic-bezier(.2,.8,.2,1)}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html,body{overscroll-behavior:none}
+body.modal-open{overflow:hidden!important;touch-action:none}
+body.modal-open #s7mdl,body.modal-open #bcLayer,body.modal-open #bcShop,body.modal-open .bv2-dlg{touch-action:pan-y}
+
+/* ---------- 1. Общие слои: безопасные зоны, клавиатура, «жизнь» при повороте ---------- */
+#s7mdl,#bcLayer,.bv2-dlg{
+  padding-left:max(12px,var(--sx-safe-l))!important;padding-right:max(12px,var(--sx-safe-r))!important;
+  padding-top:max(12px,var(--sx-safe-t))!important;
+  padding-bottom:max(12px,var(--sx-safe-b))!important;
+  height:var(--vh);max-height:var(--vh);box-sizing:border-box;
+  animation:sxFade .2s ease-out both}
+#s7mdl{animation:none}
+#s7mdl.on{animation:sxFade .2s ease-out both}
+@keyframes sxFade{from{opacity:0}to{opacity:1}}
+@keyframes sxPop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes sxSheet{from{transform:translateY(60px);opacity:.3}to{transform:none;opacity:1}}
+
+/* ---------- 2. Окна: единая геометрия через реальную высоту --vh ---------- */
+#s7mdl .mdl{
+  max-height:calc(var(--vh) - max(24px,var(--sx-safe-t) + var(--sx-safe-b) + 16px))!important;
+  animation:sxPop .26s var(--sx-ease) both;transform-origin:50% 60%;
+  zoom:var(--ui)}
+#s7mdl.ig .mdl{animation:igIn .32s var(--sx-ease) both;zoom:1}
+#bcLayer .bc-dlg{
+  max-height:calc(var(--vh) - max(24px,var(--sx-safe-t) + var(--sx-safe-b) + 16px))!important;
+  overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  animation:sxPop .26s var(--sx-ease) both;zoom:var(--ui)}
+.bv2-dlg .bv2-dbox{max-width:min(440px,100%);max-height:calc(var(--vh) - 24px);overflow:auto;animation:sxPop .24s var(--sx-ease) both;zoom:var(--ui)}
+
+/* клавиатура: нижний лист поднимается над ней, активное поле остаётся видимым */
+html[data-kb="1"] #s7mdl,html[data-kb="1"] #bcLayer{padding-bottom:calc(var(--kb) + 8px)!important;align-items:flex-end}
+html[data-kb="1"] #s7mdl .mdl,html[data-kb="1"] #bcLayer .bc-dlg{max-height:calc(var(--vh) - 16px)!important}
+html[data-kb="1"] #s7mdl .mdl .foot{position:static}
+
+/* ---------- 3. ТЕЛЕФОН, портрет: нижний лист с ручкой ---------- */
+html[data-dev="phone"][data-orient="port"] #s7mdl:not(.ig),
+html[data-dev="phone"][data-orient="port"] #bcLayer{align-items:flex-end!important;padding:0!important}
+html[data-dev="phone"][data-orient="port"] #s7mdl:not(.ig) .mdl,
+html[data-dev="phone"][data-orient="port"] #bcLayer .bc-dlg{
+  width:100%!important;max-width:none!important;border-radius:18px 18px 0 0!important;
+  max-height:min(92vh,calc(var(--vh) - var(--sx-safe-t) - 10px))!important;
+  padding-bottom:var(--sx-safe-b);animation:sxSheet .3s var(--sx-ease) both;zoom:1}
+html[data-dev="phone"][data-orient="port"] #bcLayer .bc-dlg::before{
+  content:"";display:block;width:38px;height:4px;margin:0 auto 10px;border-radius:2px;background:rgba(120,170,255,.35)}
+html[data-dev="phone"][data-orient="port"] .bv2-dlg{padding:14px!important}
+
+/* ---------- 4. ТЕЛЕФОН, альбом / любой экран низкий: компактные окна по центру ---------- */
+html[data-short="1"] #s7mdl:not(.ig),html[data-short="1"] #bcLayer{align-items:center!important;padding:6px max(10px,var(--sx-safe-l)) 6px max(10px,var(--sx-safe-r))!important}
+html[data-short="1"] #s7mdl:not(.ig) .mdl,html[data-short="1"] #bcLayer .bc-dlg{
+  max-height:calc(var(--vh) - 12px)!important;border-radius:14px!important;animation:sxPop .22s var(--sx-ease) both;zoom:1}
+html[data-short="1"] #s7mdl .mdl{padding:0 14px!important}
+html[data-short="1"] #s7mdl .mdl-h{margin:0 -14px 8px;padding:8px 8px 6px 14px}
+html[data-short="1"] #s7mdl .mdl-h::before{display:none!important}
+html[data-short="1"] #s7mdl .mdl-h h3{font-size:15px!important}
+html[data-short="1"] #s7mdl .mdl .foot{margin:10px -14px 0!important;padding:8px 14px calc(8px + var(--sx-safe-b))}
+html[data-short="1"] #s7mdl .mdl .foot>*{min-height:40px}
+html[data-short="1"] .bv2-dlg .bv2-dbox{padding:14px 18px}
+html[data-short="1"] #s7mdl.ig{padding-top:calc(62px + var(--sx-safe-t))!important}
+
+/* ---------- 5. Планшет и ПК: достойная ширина, а не растянутые окна ---------- */
+html[data-dev="tablet"] #s7mdl .mdl{width:min(560px,100%)}
+html[data-dev="tablet"] #s7mdl .mdl.wide{width:min(820px,100%)}
+html[data-dev="tablet"] #bcLayer .bc-dlg{max-width:min(760px,100%)}
+html[data-dev="desktop"] #s7mdl .mdl.wide{width:min(900px,100%)}
+@media (min-width:1500px){ #s7mdl .mdl{width:min(560px,100%)} #s7mdl .mdl.wide{width:min(980px,100%)} }
+
+/* ---------- 6. Палец: крупные цели нажатия, без «залипания» hover ---------- */
+html[data-touch="1"] #s7mdl .mdl-x,html[data-touch="1"] #bcLayer .bc-x,html[data-touch="1"] .pn-fold{min-width:44px;min-height:44px}
+html[data-touch="1"] #s7mdl .mdl .c7,html[data-touch="1"] #s7mdl .mdl .s7b,html[data-touch="1"] #bcLayer .bc-btn{min-height:44px}
+html[data-touch="1"] #s7mdl .mdl input,html[data-touch="1"] #s7mdl .mdl select,html[data-touch="1"] #s7mdl .mdl textarea,
+html[data-touch="1"] #bcLayer input,html[data-touch="1"] #bcLayer select{font-size:16px!important}  /* iOS не приближает страницу */
+html[data-touch="1"] *{-webkit-tap-highlight-color:transparent}
+html[data-touch="1"] #s7mdl .mdl,html[data-touch="1"] #bcLayer .bc-dlg{scroll-padding-bottom:96px}
+
+/* ---------- 7. Очень узкие экраны (≤ 360 px, складные в сложенном виде) ---------- */
+@media (max-width:360px){
+  #s7mdl .mdl{padding:0 12px!important}
+  #s7mdl .mdl-h{margin:0 -12px 10px;padding-left:12px}
+  #s7mdl .mdl .foot{margin:12px -12px 0!important;padding:10px 12px calc(10px + var(--sx-safe-b));flex-wrap:wrap}
+  #s7mdl .mdl .foot>*{flex:1 1 120px}
+  .bv2-dbox .bv2-dact{flex-wrap:wrap}.bv2-dbox .bv2-dact>*{flex:1 1 110px}
+}
+
+/* ---------- 8. Крупные экраны: меню и окна растут вместе с монитором ---------- */
+@media (min-width:1920px){ :root{--ui:1.15} }
+@media (min-width:2560px){ :root{--ui:1.35} }
+@media (min-width:3400px){ :root{--ui:1.7} }
+
+/* ---------- 9. Боковые панели: не перекрывают карту ---------- */
+html[data-dev="phone"][data-orient="land"] #launch,html[data-dev="phone"][data-orient="land"] #adp,
+html[data-dev="phone"][data-orient="land"] #facp,html[data-dev="phone"][data-orient="land"] #lgp{
+  width:min(340px,46vw)!important;max-height:calc(var(--vh) - 64px - var(--sx-safe-t))!important;overflow-y:auto}
+html[data-dev="tablet"] #launch,html[data-dev="tablet"] #adp,html[data-dev="tablet"] #facp,html[data-dev="tablet"] #lgp{
+  width:min(380px,44vw)!important;max-height:calc(var(--vh) - 90px)!important;overflow-y:auto}
+#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree{overscroll-behavior:contain}
+
+/* ---------- 9b. Плавающие панели боя на низких экранах: всегда внутри окна ---------- */
+html[data-short="1"] #gmFree,html[data-short="1"] #gmStat,html[data-short="1"] #gmChat{
+  bottom:calc(8px + var(--sx-safe-b))!important;top:auto;
+  max-height:calc(var(--vh) - 100px - var(--sx-safe-t) - var(--sx-safe-b))!important;overflow-y:auto}
+html[data-short="1"] #legend{bottom:calc(36px + var(--sx-safe-b))}
+html[data-short="1"] #legend .bd{max-height:calc(var(--vh) - 190px)}
+html[data-dev="phone"] #gmBar{max-width:calc(100vw - 16px)}
+
+/* боковые панели боя начинаются строго под верхней панелью (её высота меняется: перенос кнопок, поворот) */
+html:not([data-dev="phone"][data-orient="port"]) body :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree){
+  top:calc(var(--sx-bar,76px) + 8px)!important;bottom:calc(8px + var(--sx-safe-b))!important;max-height:none!important}
+
+/* ---------- 10. Фокус и движение ---------- */
+#s7mdl :focus-visible,#bcLayer :focus-visible,.bv2-dlg :focus-visible{outline:2px solid #ffc53d;outline-offset:2px}
+.sx-modal-root:focus{outline:0}
+@media (prefers-reduced-motion:reduce){
+  #s7mdl .mdl,#bcLayer .bc-dlg,.bv2-dlg .bv2-dbox,#s7mdl.on,#bcLayer,.bv2-dlg{animation:none!important}}
+@media print{#s7mdl,#bcLayer{display:none!important}}

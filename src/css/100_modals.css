@@ -1,0 +1,170 @@
+/* ==========================================================================
+   SKYDOMINION 2 — МОДАЛКИ И ПАНЕЛИ v4 («не мешают игре»)
+   Подключается ПОСЛЕДНИМ (после 99_redesign.css). Только оформление + классы,
+   которые ставит 100_modals.js (.ig, .fold, .mdl-h, .mdl-x, .pn-fold).
+   Принципы:
+   1) в бою окна НЕ затемняют и НЕ блокируют карту — это компактные карточки;
+   2) в меню — аккуратный диалог: липкие заголовок и кнопки, крестик, Esc, свайп вниз;
+   3) боковые панели можно сворачивать, перетаскивать, они сами уступают карте
+      на время выбора точки;
+   4) тосты — компактные, не перекрывают управление.
+   ========================================================================== */
+
+/* ---------- 1. ДИАЛОГИ (меню, профиль, лидеры, мова …) ---------- */
+#s7mdl{
+  background:rgba(4,5,8,.5)!important;
+  -webkit-backdrop-filter:blur(3px)!important;backdrop-filter:blur(3px)!important;
+  overscroll-behavior:contain}
+#s7mdl .mdl{
+  position:relative;display:block;
+  max-height:min(88vh,88dvh)!important;
+  padding:0 18px 0!important;
+  overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-gutter:stable;-webkit-overflow-scrolling:touch}
+
+/* липкий заголовок с крестиком */
+#s7mdl .mdl-h{
+  position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;
+  margin:0 -18px 12px;padding:14px 10px 10px 18px;
+  background:linear-gradient(180deg,#141821,#10131a);
+  border-bottom:1px solid var(--line-2)}
+#s7mdl .mdl-h h3{flex:1;min-width:0;margin:0!important;font-size:17px!important}
+#s7mdl .mdl-h::before{ /* «ручка» для свайпа вниз — только на телефоне */
+  content:"";position:absolute;top:5px;left:50%;width:36px;height:4px;margin-left:-18px;
+  border-radius:2px;background:var(--line-3);display:none}
+.mdl-x{
+  flex:none;width:38px;height:38px;display:grid;place-items:center;padding:0;
+  font:400 24px/1 var(--ui,system-ui);color:var(--text-2);cursor:pointer;
+  background:rgba(255,255,255,.03);border:1px solid var(--line-2);border-radius:var(--r-s);
+  transition:background .15s,border-color .15s,color .15s}
+.mdl-x:hover,.mdl-x:focus-visible{outline:0;color:#fff;border-color:var(--red);background:rgba(255,65,54,.18)}
+.mdl-x.float{position:absolute;top:10px;right:10px;z-index:6}
+
+/* липкий низ с кнопками — всегда на виду, даже в длинных списках */
+#s7mdl .mdl .foot{
+  position:sticky;bottom:0;z-index:4;
+  margin:16px -18px 0!important;padding:12px 18px calc(12px + var(--safe-b));
+  background:linear-gradient(180deg,rgba(13,15,19,0),#0d0f13 26%);
+  gap:10px}
+#s7mdl .mdl .foot>*{min-height:44px}
+#s7mdl .mdl .opt{margin-bottom:14px}
+#s7mdl .mdl .chips7,#s7mdl .mdl .chips7 .c7{min-height:0}
+#s7mdl .mdl .c7{min-height:38px}
+#s7mdl .mdl .s7in{font-size:16px}  /* не даёт iOS приближать страницу */
+#s7mdl .mdl :focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+@media (max-width:699px){
+  #s7mdl{align-items:flex-end}
+  #s7mdl .mdl{max-height:86vh!important;max-height:86dvh!important;border-radius:14px 14px 0 0!important}
+  #s7mdl .mdl-h{padding-top:20px;touch-action:none}
+  #s7mdl .mdl-h::before{display:block}
+  #s7mdl .mdl .foot>*{min-height:48px}
+}
+@media (min-width:700px){
+  #s7mdl .mdl{width:min(520px,100%)}
+  #s7mdl .mdl.wide{width:min(780px,100%)}
+  #s7mdl .mdl.lang{width:min(400px,100%)}
+}
+
+/* ---------- 2. В БОЮ: карточка-подсказка вместо модалки ---------- */
+/* карта остаётся видимой и кликабельной; карточка — сверху под панелью */
+#s7mdl.ig{
+  background:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;
+  pointer-events:none;
+  align-items:flex-start!important;justify-content:center;
+  padding:calc(128px + var(--safe-t)) 12px 0!important}
+#s7mdl.ig .mdl{
+  pointer-events:auto;
+  width:min(430px,100%)!important;max-height:none!important;overflow:hidden;
+  padding:0 14px 12px!important;
+  border-radius:var(--r-m)!important;
+  box-shadow:0 14px 44px rgba(0,0,0,.6),0 0 0 1px rgba(217,179,106,.22)!important;
+  animation:igIn .32s var(--ease) both}
+@keyframes igIn{from{opacity:0;transform:translateY(-12px) scale(.98)}to{opacity:1;transform:none}}
+#s7mdl.ig .mdl-h{margin:0 -14px 8px;padding:9px 6px 7px 14px;background:transparent;border-bottom:1px solid var(--line)}
+#s7mdl.ig .mdl-h::before{display:none}
+#s7mdl.ig .mdl-h h3{font-size:13px!important;letter-spacing:.14em!important}
+#s7mdl.ig .mdl-x{width:30px;height:30px;font-size:20px}
+#s7mdl.ig .sub{font-size:12.5px;line-height:1.45;margin-bottom:0!important;color:var(--text-2)}
+#s7mdl.ig .mdl .foot{
+  position:static;margin:12px 0 0!important;padding:0;background:none;gap:8px}
+#s7mdl.ig .mdl .foot>*{min-height:40px;font-size:12px}
+/* таймер на предложение перемирия (25 с) */
+.mdl-bar{
+  position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--brass);
+  transform-origin:left;animation:mdlBar 25s linear forwards}
+@keyframes mdlBar{to{transform:scaleX(0)}}
+@media (max-width:640px){
+  #s7mdl.ig{padding-top:calc(176px + var(--safe-t))!important}
+}
+
+/* ---------- 3. БОКОВЫЕ ПАНЕЛИ: сворачивание, перетаскивание ---------- */
+#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree{transition:opacity .2s}
+.lp-head,#gmChat .hd,#gmStat .hd,#gmFree .hd{touch-action:none;-webkit-user-select:none;user-select:none}
+@media (min-width:700px){
+  .lp-head,#gmChat .hd,#gmStat .hd,#gmFree .hd{cursor:grab}
+  body.pn-drag .lp-head,body.pn-drag #gmChat .hd,body.pn-drag #gmStat .hd,body.pn-drag #gmFree .hd{cursor:grabbing}
+  #launch,#adp,#facp,#lgp{width:352px!important}
+}
+
+/* кнопка «свернуть» (её создаёт скрипт) занимает правый край, крестик сдвигается левее */
+#launch .lp-head,#adp .lp-head,#facp .lp-head,#lgp .lp-head,#gmChat .hd,#gmStat .hd,#gmFree .hd{padding-right:54px!important}
+#gmChat .hd .lp-x,#gmStat .hd .lp-x,#gmFree .hd .lp-x{margin-right:0}
+.pn-fold{
+  position:absolute;top:10px;right:8px;z-index:3;width:38px;height:38px;padding:0;
+  display:grid;place-items:center;cursor:pointer;color:var(--text-2);
+  background:rgba(255,255,255,.03);border:1px solid var(--line-2);border-radius:var(--r-s);
+  transition:all .18s}
+.pn-fold::before{
+  content:"";width:9px;height:9px;border:solid currentColor;border-width:0 2px 2px 0;
+  transform:translateY(-2px) rotate(45deg);transition:transform .2s}
+.pn-fold:hover,.pn-fold:focus-visible{outline:0;color:var(--brass-2);border-color:var(--brass);background:var(--brass-soft)}
+.fold>.pn-fold::before{transform:translateY(2px) rotate(-135deg)}
+
+/* свёрнутая панель = только заголовок; карта полностью свободна */
+#launch.fold,#adp.fold,#facp.fold,#lgp.fold,#gmChat.fold,#gmStat.fold,#gmFree.fold{max-height:none!important;height:auto!important}
+.fold>.lp-body,.fold>.lp-foot,.fold>.chatbox,.fold>#gsBody,.fold>#gfBody{display:none!important}
+
+/* на время выбора точки на карте панели пусков/ППО сворачиваются сами */
+body:has(#pickbar.on) #launch:not(.unfold)>.lp-body,
+body:has(#pickbar.on) #launch:not(.unfold)>.lp-foot,
+body:has(#pickbar.on) #adp:not(.unfold)>.lp-body,
+body:has(#pickbar.on) #adp:not(.unfold)>.lp-foot{display:none!important}
+body:has(#pickbar.on) #launch:not(.unfold),
+body:has(#pickbar.on) #adp:not(.unfold){max-height:none!important;height:auto!important}
+
+/* телефон: нижний лист не занимает больше половины экрана */
+@media (max-width:699px){
+  #launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree{max-height:50vh;max-height:50dvh}
+  .pn-fold{top:8px}
+  #launch.fold,#adp.fold,#facp.fold,#lgp.fold,#gmChat.fold,#gmStat.fold,#gmFree.fold{
+    border-radius:12px 12px 0 0!important}
+}
+
+/* ---------- 4. ТОСТЫ: компактно, поверх карты не мешают ---------- */
+#toast{
+  max-width:min(400px,calc(100vw - 24px))!important;min-width:0!important;
+  opacity:.97;pointer-events:auto}
+#toast .ts{padding:8px 12px 9px 10px;gap:9px}
+#toast .ts-ic{width:24px;height:24px}
+#toast .ts-h{margin-bottom:1px}
+#toast .ts-tx{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+  line-height:1.38;font-size:12px}
+@media (hover:hover){#toast:hover{opacity:1}}
+/* меню: тост в углу, не закрывает кнопки */
+body.s7-menu #toast{max-width:min(360px,calc(100vw - 24px))!important}
+
+/* ---------- 5. РЕЗУЛЬТАТЫ БОЯ: кнопки всегда под рукой ---------- */
+#s7res .rs-foot{
+  position:sticky;bottom:calc(-1*(14px + var(--safe-b)));z-index:5;margin:18px -14px 0;
+  padding:12px 14px calc(12px + var(--safe-b));
+  background:linear-gradient(180deg,rgba(7,8,10,0),var(--bg) 30%)}
+
+/* ---------- 6. ПОПАПЫ НА КАРТЕ: крупная зона закрытия ---------- */
+.bv-pop .maplibregl-popup-close-button{width:40px;height:40px}
+
+@media (prefers-reduced-motion:reduce){
+  #s7mdl.ig .mdl,.mdl-bar{animation:none!important}
+  .mdl-bar{transform:none}
+}

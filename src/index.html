@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="SKYDOMINION — тактична гра про протиповітряну оборону на справжній мапі України та Росії: удари, ППО, заводи, логістика, пальне й мережеві дуелі.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SKYDOMINION — Тактична мапа">
+<meta property="og:description" content="SKYDOMINION — тактична гра про протиповітряну оборону на справжній мапі України та Росії: удари, ППО, заводи, логістика, пальне й мережеві дуелі.">
+<meta property="og:locale" content="uk_UA">
+<meta name="twitter:card" content="summary">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b0c0e'/%3E%3Cpath d='M32 6 58 32 32 58 6 32Z' fill='none' stroke='%232f8cff' stroke-width='5'/%3E%3Cpath d='M32 20 44 32 32 44 20 32Z' fill='%23ff3b30'/%3E%3Ccircle cx='32' cy='32' r='3.2' fill='%23fff'/%3E%3C/svg%3E">
+<title>SKYDOMINION — Тактична мапа</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>@@F:css/00_style.css@@</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="frame"></div>
+
+<svg id="cross" viewBox="0 0 34 34" fill="none" stroke="#e9edf1" stroke-width="1.2">
+  <path d="M17 2v9M17 23v9M2 17h9M23 17h9"/><circle cx="17" cy="17" r="1.3" fill="#ff3b30" stroke="none"/>
+</svg>
+
+<div id="brand" class="hud panel">
+  <svg class="mark" viewBox="0 0 32 32" fill="none">
+    <rect x="1" y="1" width="30" height="30" rx="7" stroke="#ff3b30" stroke-opacity=".55"/>
+    <path d="M7 24 L16 7 L25 24" stroke="#f1f3f5" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M11.5 18.5h9" stroke="#ff3b30" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="16" cy="7" r="2.2" fill="#ff3b30"/>
+  </svg>
+  <div>
+    <div class="t1">SKY<b>DOMINION</b></div>
+    <div class="t2">Тактична мапа · Етап 7</div>
+  </div>
+</div>
+
+<div id="status" class="hud panel" title="Показати лінію фронту (дані DeepState)" style="cursor:pointer">
+  <div class="dot"></div>
+  <div>
+    <div class="l1">Лінія фронту</div>
+    <div class="l2">19.10.2026</div>
+  </div>
+</div>
+
+<div id="controls" class="hud">
+  <button class="btn" id="zin" aria-label="Наблизити"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg></button>
+  <button class="btn" id="zout" aria-label="Віддалити"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10h12"/></svg></button>
+  <button class="btn" id="lyr" aria-label="Шари"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10 3 2.5 7 10 11l7.5-4z"/><path d="m2.5 10.5 7.5 4 7.5-4"/><path d="m2.5 14 7.5 4 7.5-4"/></svg></button>
+</div>
+
+<div id="layers" class="hud panel">
+  <h4>Шари мапи</h4>
+  <label class="tg"><input type="checkbox" data-group="front" checked><span class="sw"></span>Лінія фронту</label>
+  <label class="tg"><input type="checkbox" data-group="occupied" checked><span class="sw"></span>Окупована територія</label>
+  <label class="tg"><input type="checkbox" data-group="admin" checked><span class="sw"></span>Адміністративні межі</label>
+  <label class="tg"><input type="checkbox" data-group="regions" checked><span class="sw"></span>Назви областей</label>
+  <h4 class="mt">Об'єкти Росії</h4>
+  <div id="lySites"></div>
+  <h4 class="mt">Об'єкти України</h4>
+  <div id="lySitesUa"></div>
+  <label class="tg"><input type="checkbox" data-group="zones" checked><span class="sw"></span>Зони пускових рубежів</label>
+  <h4 class="mt">Заводи</h4>
+  <div id="lyFac"></div>
+  <h4 class="mt">ППО України та Росії</h4>
+  <label class="tg"><input type="checkbox" data-group="adall" checked><span class="sw"></span>Пункти, установки й авіація ППО</label>
+  <label class="tg"><input type="checkbox" data-group="adrange" checked><span class="sw"></span>Радіуси дії ППО (кола й сектори)</label>
+  <label class="tg"><input type="checkbox" data-group="alerts" checked><span class="sw"></span>Повітряні тривоги</label>
+  <div class="ly-attr" id="lyAttr"></div>
+</div>
+
+<div id="legend" class="hud panel">
+  <div class="hd"><span>Умовні позначення</span><i>▾</i></div>
+  <div class="bd">
+    <div class="lg"><div class="sw-front"></div>Лінія фронту</div>
+    <div class="lg"><div class="sw-occ"></div>Тимчасово окупована територія</div>
+    <div class="lg"><div class="sw-ua"></div>Державний кордон України</div>
+    <div class="lg"><div class="sw-sea"></div>Морський кордон сторін</div>
+    <div class="lg"><div class="sw-ru"></div>Територія Росії (європейська частина)</div>
+    <div class="lg"><div class="sw-obl"></div>Межі областей</div>
+    <div class="lg"><div class="sw-neutral"></div>Країни поза бойовими діями</div>
+    <div class="lgsub">Об'єкти Росії</div>
+    <div id="lgSites" style="display:grid;gap:7px"></div>
+    <div class="lgsub">Об'єкти України</div>
+    <div id="lgSitesUa" style="display:grid;gap:7px"></div>
+    <div class="lgsub">Заводи · відтінок — напрям виробництва</div>
+    <div id="lgFac" class="lgfac"></div>
+    <div class="lgsub">Повітряні цілі</div>
+    <div class="lg"><div class="ic" id="lgU1"></div>Ціль Росії (з масштабу 30 км — фото)</div>
+    <div class="lg"><div class="ic" id="lgU3"></div>Ціль України (з масштабу 30 км — фото)</div>
+    <div class="lg"><div class="ic" id="lgU2"></div>Носій Росії (літак / корабель)</div>
+    <div class="lg"><div class="ic" id="lgU4"></div>Носій України (Су-24)</div>
+    <div class="lgsub">ППО України</div>
+    <div class="lg"><div class="ic" id="lgA1"></div>Пункт ППО (колір = тривога в області)</div>
+    <div class="lg"><div class="ic" id="lgA2"></div>Установка ППО (з 30 км — фото)</div>
+    <div class="lg"><div class="ic"><span class="sw-ring"></span></div>Радіус дії ППО</div>
+    <div class="lg"><div class="ic" id="lgA3"></div>Авіація ППО (Су-27 / МіГ-29)</div>
+    <div class="lg"><div class="ic"><svg class="sw-sec" viewBox="0 0 22 16"><path d="M2 8 L19 2 A9 9 0 0 1 19 14 Z" fill="rgba(61,139,255,.18)" stroke="#4d9bff" stroke-width="1.2" stroke-dasharray="3 1.6"/></svg></div>Сектор дії літака (від носа)</div>
+    <div class="lgsub">ППО Росії</div>
+    <div class="lg"><div class="ic" id="lgR1"></div>Пункт ППО Росії (колір = тривога в регіоні)</div>
+    <div class="lg"><div class="ic" id="lgR2"></div>Установка ППО Росії (з 30 км — фото)</div>
+    <div class="lg"><div class="ic"><span class="sw-ring ru"></span></div>Радіус дії ППО Росії</div>
+    <div class="lgsub">Повітряні тривоги</div>
+    <div class="lg"><div class="ic"><span class="sw-al" style="--c:#ffd21a"></span></div>Тривога жовта (БпЛА / РБпЛА)</div>
+    <div class="lg"><div class="ic"><span class="sw-al" style="--c:#ff2a2a"></span></div>Тривога червона (ракети та інші)</div>
+    <div class="src">Фронт: DeepState, 19.10.2026<br>Мапа: © OpenStreetMap · OpenMapTiles</div>
+  </div>
+</div>
+
+<div id="coords" class="hud panel">
+  <span><b>ШИР</b><span id="cLat">—</span></span>
+  <span><b>ДОВ</b><span id="cLon">—</span></span>
+  <span class="zz"><b>МАСШ</b><span id="cZ">—</span></span>
+</div>
+
+<div id="toast" class="hud panel"></div>
+
+
+<div id="launch" class="hud panel" role="dialog" aria-label="Панель пусків">
+  <div class="lp-head" id="lpHead"></div>
+  <div class="lp-body" id="lpBody"></div>
+  <div class="lp-foot"><div class="lp-msg" id="lpMsg"></div><button class="lp-go" id="lpGo" data-act="go" disabled>ПУСК</button></div>
+</div>
+
+<div id="adp" class="hud panel" role="dialog" aria-label="Панель ППО">
+  <div class="lp-head" id="adHead"></div>
+  <div class="lp-body" id="adBody"></div>
+  <div class="lp-foot"><div class="lp-msg" id="adMsg"></div><button class="lp-go" id="adGo" data-ad="place" disabled>РОЗМІСТИТИ</button></div>
+</div>
+
+<div id="pickbar" class="hud panel"><span id="pickTxt"></span><button id="pickDone" class="chip">Скасувати</button></div>
+<div id="followBar" class="hud panel" role="status"><span class="fb-dot"></span><span id="followTxt"></span><button id="followStop" class="chip">Зупинити</button></div>
+<div id="selbar" class="hud panel" role="status"><span class="sb-ic" id="selIc"></span><div class="sb-tx"><b id="selNm"></b><small id="selSt"></small><small class="hint" id="selHint"></small></div>
+  <button class="chip" id="selPanel">Панель</button><button class="lp-x" id="selX" aria-label="Зняти вибір">×</button></div>
+
+<div id="gmBar" class="hud panel" role="status">
+  <div class="gb-l"><div class="gb-mode" id="gbMode"></div><div class="gb-ph" id="gbPh"></div></div>
+  <div class="gb-clock" id="gbClock"></div>
+  <div class="gb-sc" id="gbSc" title="Очки сторін: Україна : Росія"><span class="ua">0</span><em>:</em><span class="ru">0</span></div>
+  <div class="gb-money" id="gbMoney" title="Бюджет на виробництво"></div>
+  <div class="gb-r" id="gbBtns"></div>
+</div>
+<div id="facp" class="hud panel" role="dialog" aria-label="Панель заводу">
+  <div class="lp-head" id="fpHead"></div>
+  <div class="lp-body" id="fpBody"></div>
+  <div class="lp-foot"><div class="lp-msg" id="fpMsg"></div><button class="lp-go" id="fpGo" data-s7="fpgo">ЗАПУСТИТИ ВИРОБНИЦТВО</button></div>
+</div>
+<div id="lgp" class="hud panel" role="dialog" aria-label="Панель вузла логістики">
+  <div class="lp-head" id="lgHead"></div>
+  <div class="lp-body" id="lgBody"></div>
+  <div class="lp-foot"><div class="lp-msg" id="lgMsg"></div><button class="lp-go" id="lgGo" data-s7="lggo">ЗАМОВИТИ ДЕТАЛІ</button></div>
+</div>
+<div id="gmChat" class="hud panel" role="dialog" aria-label="Чат кімнати">
+  <div class="hd"><span>Чат кімнати</span><button class="lp-x" data-s7="chatx" aria-label="Закрити">×</button></div>
+  <div class="chatbox"><div class="chatlog" id="gcLog"></div><div class="chatin"><input class="s7in" id="gcIn" maxlength="200" placeholder="Повідомлення…" autocomplete="off"><button class="s7b sm" data-s7="chatsend" data-v="gcIn">Надіслати</button></div></div>
+</div>
+<div id="gmStat" class="hud panel" role="dialog" aria-label="Збиття за типами">
+  <div class="hd"><span>Збиття за типами</span><button class="lp-x" data-s7="statx" aria-label="Закрити">×</button></div>
+  <div id="gsBody"></div>
+</div>
+<div id="gmFree" class="hud panel" role="dialog" aria-label="Полігон: час і бот">
+  <div class="hd"><span id="gfHd">Полігон · час і бот</span><button class="lp-x" data-s7="gfx" aria-label="Закрити">×</button></div>
+  <div id="gfBody"></div>
+</div>
+<div id="gmSpec" class="hud panel">РЕЖИМ ГЛЯДАЧА · ви лише спостерігаєте за боєм</div>
+
+<div id="s7menu" aria-label="Головне меню">
+  <div class="mm-right" id="mmRight">
+    <div class="mm-vig"></div><div class="mm-scan"></div>
+    <div class="mm-title"><div class="t1">SKY<b>DOMINION</b></div><div class="t2">Тактичний симулятор протиповітряної оборони</div><div class="t3"></div></div>
+    <div id="mmActs"></div>
+  </div>
+  <aside class="mm-side" id="mmSide">
+    <div class="mm-brand">
+      <svg viewBox="0 0 32 32" fill="none"><rect x="1" y="1" width="30" height="30" rx="7" stroke="#ff3b30" stroke-opacity=".55"/><path d="M7 24 L16 7 L25 24" stroke="#f1f3f5" stroke-width="2.2" stroke-linejoin="round"/><path d="M11.5 18.5h9" stroke="#ff3b30" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="#ff3b30"/></svg>
+      <div><div class="t1">SKY<b>DOMINION</b></div><div class="t2">Головне меню · Етап 7</div></div>
+    </div>
+    <div class="mm-scroll" id="mmScroll"></div>
+  </aside>
+</div>
+<button id="langBtn" class="lang-btn" data-s7="langmdl" title="Мова" aria-label="Мова гри">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/><path d="M5 7.2h14M5 16.8h14" stroke-opacity=".55"/></svg>
+  <span class="lb-code notr" id="langCode">УКР</span>
+</button>
+<div id="s7res" role="dialog" aria-label="Результати бою"></div>
+<div id="s7mdl" role="dialog" aria-modal="true"></div>
+
+<div id="loader">
+  <div class="box">
+    <div class="ttl">SKY<b>DOMINION</b></div>
+    <div class="sub">Розгортання тактичної мапи</div>
+    <div class="bar"><i></i></div>
+    <div class="err" id="loadErr"></div>
+  </div>
+</div>
+
+<script>@@F:js/01_geodata.js@@</script>
+
+<script src="bv2-config.js"></script>
+<script>@@F:js/02b_hornet_ai.js@@</script>
+<script>@@F:js/02c_radar.js@@</script>
+<script>@@F:js/02j_aew.js@@</script>
+<script>@@F:js/02e_fog.js@@</script>
+<script>@@F:js/02g_tel.js@@</script>
+<script>@@F:js/02i_avia.js@@</script>
+<script>@@F:js/02j_team.js@@</script>
+<script>@@F:js/02f_boom.js@@</script>
+<script>@@F:js/02d_sprites.js@@</script>
+<script id="bvBoot">@@F:js/02_boot.js@@</script>
+<script>@@F:js/03_game.js@@</script>
+<script>@@F:js/04_mobile.js@@</script>
+<script id="bvAudio">
+@@F:js/07_audio.js@@
+</script>
+<script id="bvSounds">
+@@F:js/07c_sounds.js@@
+</script>
+</body>
+</html>

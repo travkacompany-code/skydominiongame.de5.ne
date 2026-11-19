@@ -1,0 +1,34 @@
+/* SKYDOMINION — ЄДИНИЙ СТИЛЬ (етап 7.64). Підключається ПІСЛЯ bv2-aaa. Лише подання.
+   Система: тло #050b18 → s1..s4 (темно-синій), лінії rgba(88,150,255,*), акцент синій #2f8cff/#4cc3ff, золото #ffc53d (дії, ціни, активні стани),
+   шрифт Exo 2, заголовки — курсив капсом 800, фаски 14 px. Нижче — спільні токени й вирівнювання відхилень окремих екранів. */
+:root{
+  --u-bg:#050b18; --u-s1:#0a1426; --u-s2:#0e1b33; --u-s3:#13254a;
+  --u-blue:#2f8cff; --u-cyan:#4cc3ff; --u-gold:#ffc53d; --u-gold-d:#b87400;
+  --u-line:rgba(88,150,255,.16); --u-line2:rgba(88,150,255,.3); --u-line3:rgba(88,150,255,.5);
+  --u-text:#eaf3ff; --u-text2:#c2d2ea; --u-dim:#93a8c8;
+  --u-red:#ff4d42; --u-green:#34d27a;
+  --u-cut:14px;
+  --u-fs-label:11px; --u-fs-body:13px; --u-fs-h:20px;
+}
+/* магазин / арсенал / SKYCOIN: заголовки як у меню, золота кнопка з темним текстом */
+html body .bc-ttl b{font-style:italic;font-weight:800;letter-spacing:.06em}
+html body .bc-hd{background:linear-gradient(180deg,rgba(14,27,51,.9),rgba(10,20,38,.6));border-bottom:1px solid var(--u-line2)}
+html body .bc-sh span{font-style:italic}
+html body .bc-open:not(.off){background:linear-gradient(135deg,#ffe58a,#b87400 44%,#ffc53d 72%,#fff0b0);border-color:rgba(255,197,61,.85);color:#1b1300;text-shadow:none}
+html body .bc-open:not(.off):hover{filter:brightness(1.08)}
+html body .bc-frame{border:1px solid var(--u-line2);box-shadow:0 30px 80px rgba(0,0,0,.65),0 0 0 1px rgba(255,197,61,.12) inset}
+/* полоски характеристик (радіус / цілі) і крок оплати — як у решті інтерфейсу; сторона РФ лишається червоною */
+html body #bcBody .bars i.on,html body #bcBody .bars.wide i.on{background:#4d9bff;box-shadow:0 0 6px rgba(61,139,255,.6)}
+html body #bcBody .ru .bars i.on{background:#ff5a4e;box-shadow:0 0 6px rgba(255,60,50,.55)}
+html body .tp-steps span.on i{background:#ffc53d;color:#1b1300}
+html body .bc-logo{filter:hue-rotate(205deg) saturate(1.15)}
+/* верхня ігрова панель: у bv2-aaa їй жорстко задано 1000 px, а блок кнопок із justify-content:flex-end при переповненні виїжджав ліворуч і накладався на гроші.
+   Тепер: на широких екранах панель по ширині вмісту, на вузьких — кнопки прокручуються від початку. */
+html body #gmBar .gb-r{justify-content:flex-start!important}
+@media (min-width:1101px){
+  html body #gmBar{left:50%!important;right:auto!important;transform:translateX(-50%)!important;width:max-content!important;max-width:calc(100vw - 28px)!important}
+  html body #gmBar .gb-r{flex:none!important;overflow:visible!important}
+  html body #gmBar .gb-l{flex:0 0 230px!important}
+}
+html body #gmBar .gb-money{align-items:center!important;align-self:stretch;background:none!important;padding:0 14px!important;font-family:var(--bv-f);font-style:italic;color:var(--bv-gold)}
+html body #gmBar .gb-money small,html body #gmBar .gb-money em{font-style:normal;color:var(--bv-dim)}

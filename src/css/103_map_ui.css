@@ -1,0 +1,208 @@
+/* ==========================================================================
+   SKYDOMINION 2 — 103_map_ui.css · «TACTICAL CONSOLE» v7
+   Меню карты: кнопки-рейка, «Шари мапи», «Умовні позначення», бренд, фронт-статус,
+   телеметрия координат, линейка масштаба, попапы объектов, панели выбора.
+   Подключается ПОСЛЕДНИМ. Ничего не скрывает и не удаляет — только внешний вид.
+   Единый язык: тёмное стекло → латунные угловые скобки → моно-данные → «умные» переключатели.
+   ========================================================================== */
+:root{
+  --mc-bg:linear-gradient(165deg,rgba(25,30,39,.97),rgba(9,11,15,.985));
+  --mc-line:rgba(217,179,106,.26);
+  --mc-hi:inset 0 1px 0 rgba(255,255,255,.07);
+  --mc-sh:0 16px 40px rgba(0,0,0,.58),0 2px 8px rgba(0,0,0,.4);
+  --mc-br:rgba(217,179,106,.8);   /* цвет угловых скобок */
+}
+/* «стекло» только в режиме МАКС (в авто/лайт блюр отключён ради FPS) */
+body.q-max :is(#layers,#legend,#brand,#status,#coords,#controls,#selbar,#followBar,#pickbar,.bv-pop .maplibregl-popup-content){
+  -webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4)}
+
+/* ---------- рамка экрана: HUD-уголки ---------- */
+.frame::before{
+  content:"";position:absolute;inset:calc(8px + var(--safe-t)) calc(8px + var(--safe-r)) calc(8px + var(--safe-b)) calc(8px + var(--safe-l));
+  pointer-events:none;opacity:.55;
+  background:
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 0/22px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 0/1.5px 22px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 0/22px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 0/1.5px 22px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 100%/22px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 100%/1.5px 22px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 100%/22px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 100%/1.5px 22px no-repeat}
+
+/* перекрестие прицела */
+#cross{stroke:var(--brass-2);opacity:.9;filter:drop-shadow(0 0 5px rgba(217,179,106,.55))}
+
+/* ---------- БРЕНД (слева сверху) ---------- */
+#brand{
+  padding:7px 18px 7px 8px!important;gap:12px!important;border-radius:16px!important;overflow:hidden;
+  background:linear-gradient(100deg,rgba(217,179,106,.2),rgba(14,17,23,.97) 58%)!important;
+  border:1px solid var(--mc-line)!important;box-shadow:var(--mc-sh),var(--mc-hi)!important}
+#brand::after{ /* блик-«полоска» */
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,transparent,var(--brass),transparent);
+  box-shadow:0 0 14px var(--brass)}
+#brand .mark{width:34px;height:34px;padding:4px;border-radius:11px;background:rgba(0,0,0,.4);border:1px solid var(--mc-line)}
+#brand .t1{font-size:13.5px!important;letter-spacing:.2em!important}
+#brand .t2{color:var(--brass-2)!important;font-size:8.5px!important;letter-spacing:.2em!important}
+
+/* ---------- ЛІНІЯ ФРОНТУ (справа сверху): «живая» капсула ---------- */
+#status{
+  padding:7px 16px 7px 13px!important;border-radius:999px!important;gap:11px!important;
+  background:linear-gradient(100deg,rgba(14,17,23,.97),rgba(255,65,54,.16))!important;
+  border:1px solid rgba(255,90,77,.4)!important;box-shadow:var(--mc-sh),var(--mc-hi)!important;
+  transition:transform .18s var(--spring),border-color .2s,box-shadow .2s}
+#status:hover{transform:translateY(-1px);border-color:var(--brass)!important}
+#status:active{transform:scale(.96)}
+#status .dot{width:10px;height:10px;border-radius:50%;animation:mcPing 2.2s ease-out infinite}
+@keyframes mcPing{0%{box-shadow:0 0 0 0 rgba(255,65,54,.6),0 0 10px var(--red)}100%{box-shadow:0 0 0 10px rgba(255,65,54,0),0 0 10px var(--red)}}
+#status .l1{color:#ff9b91!important;font-size:8.5px!important;letter-spacing:.22em!important}
+#status .l2{color:#fff!important;font-size:12.5px;letter-spacing:.1em!important}
+
+/* ---------- РЕЙКА УПРАВЛЕНИЯ (+ / − / шари): одна капсула ---------- */
+#controls{
+  gap:0!important;padding:4px;border-radius:22px;
+  background:var(--mc-bg);border:1px solid var(--mc-line);box-shadow:var(--mc-sh),var(--mc-hi)}
+#controls::before{ /* линейка зума слева */
+  content:"";position:absolute;left:-10px;top:16px;bottom:16px;width:5px;pointer-events:none;opacity:.7;
+  background:repeating-linear-gradient(180deg,var(--mc-br) 0 1px,transparent 1px 9px)}
+#controls::after{content:"";position:absolute;left:-10px;top:50%;width:9px;height:2px;margin-top:-1px;pointer-events:none;background:var(--brass-2);box-shadow:0 0 8px var(--brass)}
+body #controls .btn{
+  width:46px;height:46px;border:0!important;border-radius:17px!important;background:transparent!important;
+  box-shadow:none!important;color:var(--text-2)}
+body #controls .btn+.btn{
+  background-image:linear-gradient(90deg,transparent,rgba(217,179,106,.35),transparent)!important;
+  background-size:56% 1px!important;background-repeat:no-repeat!important;background-position:top center!important}
+body #controls .btn svg{width:22px;height:22px}
+body #controls .btn:hover:not(:disabled){color:var(--brass-2);background:var(--brass-soft)!important;transform:none}
+body #controls .btn:active{transform:scale(.9)}
+body #controls .btn.on,body #controls .btn.active{
+  color:#17110a;background:linear-gradient(180deg,var(--brass-2),var(--brass))!important;box-shadow:0 0 18px rgba(217,179,106,.5)!important}
+
+/* ---------- ШАРИ МАПИ ---------- */
+body #layers{
+  width:min(310px,calc(100vw - 82px));padding:16px 10px 12px 14px!important;border-radius:22px!important;
+  background:var(--mc-bg)!important;border:1px solid var(--mc-line)!important;border-top:2px solid var(--brass)!important;
+  box-shadow:var(--mc-sh),var(--mc-hi),0 0 60px rgba(217,179,106,.06)!important;
+  scrollbar-width:thin;scrollbar-color:var(--brass-d) transparent}
+#layers.open{animation:mcSlide .3s var(--ease) both}
+@keyframes mcSlide{from{opacity:0;margin-right:-16px}to{opacity:1;margin-right:0}}
+/* угловые скобки */
+#layers::before,#legend::before{
+  content:""!important;position:absolute!important;inset:6px!important;width:auto!important;height:auto!important;
+  pointer-events:none;z-index:1;border:0!important;clip-path:none!important;opacity:.7;
+  background:
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 0/12px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 0/1.5px 12px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 0/12px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 0/1.5px 12px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 100%/12px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 0 100%/1.5px 12px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 100%/12px 1.5px no-repeat,
+    linear-gradient(var(--mc-br),var(--mc-br)) 100% 100%/1.5px 12px no-repeat!important}
+/* заголовки секций */
+body #layers h4{
+  margin:16px 0 6px!important;padding:0!important;border:0!important;
+  font:700 9.5px var(--mono)!important;letter-spacing:.2em!important;color:var(--brass-2)!important;opacity:.85}
+#layers h4::before{content:"";flex:none;width:6px;height:6px;background:var(--brass);transform:rotate(45deg);box-shadow:0 0 8px var(--brass)}
+body #layers h4:first-child{
+  margin:0 0 8px!important;padding:2px 0 10px!important;border-bottom:1px solid var(--line-2)!important;opacity:1;
+  font:800 15px var(--head)!important;letter-spacing:.16em!important;color:#fff!important;text-transform:uppercase}
+#layers h4:first-child::after{display:none}
+/* строки-переключатели */
+body .tg{
+  position:relative;min-height:40px;padding:0 10px;margin:1px 0;border-radius:12px;gap:12px;
+  font-size:13px;line-height:1.25;color:var(--muted);
+  transition:background .18s,color .18s}
+body .tg:hover{background:rgba(217,179,106,.08)}
+body .tg:has(input:checked){color:#f3f5f8}
+body .tg:active{background:rgba(217,179,106,.14)}
+/* «умный» переключатель */
+body .tg .sw{
+  width:38px!important;height:22px!important;border-radius:999px!important;flex:none;
+  background:#12161c!important;border:1px solid var(--line-3)!important;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.6)!important;transition:background .2s,border-color .2s,box-shadow .2s}
+body .tg .sw::after{
+  top:3px!important;left:3px!important;width:14px!important;height:14px!important;border-radius:50%!important;
+  background:#6b7480!important;box-shadow:0 1px 3px rgba(0,0,0,.6)!important;
+  transition:transform .26s var(--spring),background .2s,box-shadow .2s}
+body .tg input:checked+.sw{
+  background:linear-gradient(90deg,var(--brass-d),var(--brass))!important;border-color:var(--brass-2)!important;
+  box-shadow:0 0 14px rgba(217,179,106,.4),inset 0 1px 2px rgba(0,0,0,.3)!important}
+body .tg input:checked+.sw::after{transform:translateX(16px)!important;background:#fff8e6!important;box-shadow:0 1px 4px rgba(0,0,0,.5),0 0 8px rgba(255,236,190,.7)!important}
+#layers .tg .ic{width:26px;height:26px;align-items:center;border-radius:8px;background:rgba(255,255,255,.04)}
+#layers .ly-attr{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line-2);font:9px/1.55 var(--mono);color:var(--dim)}
+
+/* ---------- УМОВНІ ПОЗНАЧЕННЯ ---------- */
+body #legend{
+  max-width:min(300px,calc(100vw - 82px));padding:0!important;border-radius:20px!important;overflow:hidden;
+  background:var(--mc-bg)!important;border:1px solid var(--mc-line)!important;
+  box-shadow:var(--mc-sh),var(--mc-hi)!important}
+body #legend .hd{
+  padding:11px 12px 11px 16px!important;min-height:44px;border:0!important;
+  background:linear-gradient(90deg,rgba(217,179,106,.18),transparent 75%)!important;
+  font:700 10px var(--mono)!important;letter-spacing:.18em!important;text-transform:uppercase;color:var(--brass-2)!important}
+body #legend .hd i{
+  width:26px;height:26px;display:grid;place-items:center;border-radius:50%;
+  border:1px solid var(--mc-line);background:rgba(0,0,0,.35);color:var(--brass-2);font-size:12px;line-height:1}
+#legend .hd:hover i{background:var(--brass-soft);border-color:var(--brass)}
+body #legend .bd{margin:0!important;padding:6px 10px 12px 12px;gap:2px!important;scrollbar-width:thin;scrollbar-color:var(--brass-d) transparent}
+body .lg{padding:5px 8px;border-radius:10px;font-size:12px;line-height:1.3;transition:background .15s}
+body .lg:hover{background:rgba(255,255,255,.04)}
+.lg .ic{min-height:24px;border-radius:7px;background:rgba(255,255,255,.035);border:1px solid var(--line)}
+body .lgsub{
+  margin:12px 0 4px!important;padding:0 0 0 2px!important;border:0!important;
+  font:700 9px var(--mono)!important;letter-spacing:.2em!important;color:var(--brass-2)!important;opacity:.85}
+.lgsub::before{content:"";flex:none;width:5px;height:5px;background:var(--brass);transform:rotate(45deg)}
+
+/* ---------- ТЕЛЕМЕТРИЯ КООРДИНАТ ---------- */
+body #coords{
+  padding:0!important;gap:0!important;border-radius:14px!important;overflow:hidden;
+  background:var(--mc-bg)!important;border:1px solid var(--mc-line)!important;box-shadow:var(--mc-sh),var(--mc-hi)!important}
+#coords>span{display:flex;align-items:center;gap:9px;padding:6px 14px}
+#coords>span+span{border-left:1px solid var(--line-2)}
+#coords b{
+  margin:0!important;padding:2px 6px;border-radius:5px;background:var(--brass-soft);
+  font:700 8.5px var(--mono)!important;letter-spacing:.2em!important;color:var(--brass-2)!important}
+#coords span span{min-width:64px;text-align:right;font:600 12px var(--mono);color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+
+/* ---------- ЛИНЕЙКА МАСШТАБА ---------- */
+.maplibregl-ctrl-scale{
+  margin:0 0 8px 8px!important;padding:2px 9px!important;border-radius:0 0 7px 7px!important;
+  background:rgba(8,10,14,.88)!important;color:var(--brass-2)!important;
+  border:1.5px solid var(--brass)!important;border-top:0!important;
+  font:700 10px var(--mono)!important;letter-spacing:.1em}
+
+/* ---------- ПОПАПЫ ОБЪЕКТОВ НА КАРТЕ ---------- */
+body .bv-pop .maplibregl-popup-content,body .maplibregl-popup-content{
+  padding:14px 40px 14px 16px!important;border-radius:18px!important;
+  background:var(--mc-bg)!important;border:1px solid var(--mc-line)!important;border-top:2px solid var(--brass)!important;
+  box-shadow:var(--mc-sh),var(--mc-hi),0 0 36px rgba(217,179,106,.08)!important;
+  animation:mcPopIn .26s var(--ease) both}
+@keyframes mcPopIn{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:none}}
+.bv-pop .maplibregl-popup-content::before{
+  content:"";position:absolute;left:16px;top:-2px;width:34px;height:2px;background:var(--brass-2);box-shadow:0 0 12px var(--brass)}
+.bv-pop .maplibregl-popup-close-button{
+  top:8px!important;right:8px!important;width:30px!important;height:30px!important;border-radius:50%!important;
+  display:grid;place-items:center;font-size:19px!important;line-height:1;color:var(--text-2)!important;
+  border:1px solid var(--line-2)!important;background:rgba(255,255,255,.04)!important}
+.bv-pop .maplibregl-popup-close-button:hover{color:#fff!important;border-color:var(--red)!important;background:rgba(255,65,54,.2)!important}
+.pp-t{font-size:15px!important;letter-spacing:.07em;text-transform:uppercase}
+.pp-k{padding:5px 9px;margin-top:9px!important;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+.pp-c{display:inline-block;padding:2px 7px;border-radius:5px;background:rgba(0,0,0,.35);color:var(--brass-2)!important;letter-spacing:.06em}
+
+/* ---------- ПАНЕЛИ ВЫБОРА / СЛЕЖЕНИЯ / ВЫБОРА ТОЧКИ ---------- */
+body :is(#selbar,#followBar,#pickbar){
+  border-radius:18px!important;box-shadow:var(--mc-sh),var(--mc-hi)!important}
+body :is(#selbar,#followBar,#pickbar) .chip{
+  min-height:36px;padding:0 14px!important;border-radius:999px!important;font:700 10px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+#selbar .lp-x{border-radius:50%!important;width:34px;height:34px}
+#selbar .sb-ic{border-radius:12px;background:rgba(0,0,0,.35);border:1px solid var(--mc-line);padding:3px}
+
+/* ---------- мобильная подгонка ---------- */
+@media (max-width:699px){
+  #controls::before,#controls::after{display:block}
+  body #coords>span{padding:5px 10px}
+  #coords span span{min-width:54px;font-size:11px}
+  body #legend{border-radius:18px!important}
+}
+@media (prefers-reduced-motion:reduce){#status .dot,#layers.open,.bv-pop .maplibregl-popup-content{animation:none!important}}

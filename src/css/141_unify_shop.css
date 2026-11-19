@@ -1,0 +1,82 @@
+/* SKYDOMINION — єдиний стиль: сімейство магазину/арсеналу/SKYCOIN у палітрі BV2 (згенеровано tools/unify_bc.py з 00_style.css) */
+html body .bc-mbal{background:linear-gradient(90deg,rgba(47,140,255,.12),rgba(255,255,255,.02) 70%);border:1px solid rgba(47,140,255,.32)}
+html body .bc-mbal::before{background:#ffc53d;box-shadow:0 0 12px #ffc53d}
+html body .bc-mbal:hover{border-color:rgba(47,140,255,.6);background:linear-gradient(90deg,rgba(47,140,255,.22),rgba(47,140,255,.04) 75%)}
+html body .bc-mbal em{color:#8fc4ff}
+html body .bc-mbal b small{color:#93a8c8}
+html body .bc-mbal i{border:1px solid rgba(255,197,61,.7);background:linear-gradient(#ffc53d,#b87400);box-shadow:0 0 12px rgba(255,197,61,.4);color:#1b1300}
+html body .bc-bg{background:radial-gradient(ellipse at 70% 40%,rgba(24,70,160,.28),rgba(3,8,19,.92) 70%),rgba(3,8,19,.84)}
+html body .bc-frame{background:linear-gradient(180deg,rgba(8,20,42,.97),rgba(8,20,42,.98));border:1px solid rgba(47,140,255,.22)}
+html body .bc-frame::before{background:linear-gradient(90deg,transparent,#ffc53d 25%,#ffc53d 75%,transparent);box-shadow:0 0 14px #ffc53d}
+html body .bc-frame::after{background:linear-gradient(180deg,transparent,#ffc53d 25%,#ffc53d 75%,transparent);box-shadow:0 0 14px #ffc53d}
+html body .bc-back{color:#c2d2ea}
+html body .bc-back:hover{border-color:rgba(47,140,255,.45)}
+html body .bc-ttl b{text-shadow:0 0 22px rgba(47,140,255,.25)}
+html body .bc-tabs button{color:#c2d2ea;background:linear-gradient(90deg,rgba(47,140,255,.06),rgba(255,255,255,.015) 65%)}
+html body .bc-tabs button::before{background:#ffc53d;box-shadow:0 0 10px #ffc53d}
+html body .bc-tabs button:hover{border-color:rgba(47,140,255,.5)}
+html body .bc-tabs button.on{border-color:rgba(47,140,255,.6);background:linear-gradient(90deg,rgba(47,140,255,.24),rgba(47,140,255,.05) 80%)}
+html body .bc-tabs svg{color:#8fc4ff}
+html body .bc-tabs em{background:#ffc53d}
+html body .bc-bal{border:1px solid rgba(47,140,255,.32);background:linear-gradient(90deg,rgba(47,140,255,.12),rgba(255,255,255,.02) 70%)}
+html body .bc-bal::before{background:#ffc53d;box-shadow:0 0 10px #ffc53d}
+html body .bc-bal:hover{border-color:rgba(47,140,255,.6);background:linear-gradient(90deg,rgba(47,140,255,.22),rgba(47,140,255,.04) 75%)}
+html body .bc-bv small{color:#8fc4ff}
+html body .bc-bal i{border:1px solid rgba(255,197,61,.7);background:linear-gradient(#ffc53d,#b87400);color:#1b1300}
+html body .bc-body::-webkit-scrollbar-thumb{background:#1c3a6a}
+html body .bc-warn{border:1px solid rgba(47,140,255,.45);background:rgba(47,140,255,.1);color:#d6e6ff}
+html body .bc-warn b{color:#8fc4ff}
+html body .bc-sh{border-left:3px solid #ffc53d;box-shadow:-6px 0 12px -8px #ffc53d}
+html body .bc-car{scrollbar-color:#1c3a6a transparent}
+html body .bc-car::-webkit-scrollbar-thumb{background:#1c3a6a}
+html body .bc-arr{border:1px solid rgba(47,140,255,.5);background:rgba(8,20,42,.94);color:#8fc4ff}
+html body .bc-arr:hover{background:rgba(14,40,90,.95)}
+html body .bc-box,html body .bc-it{background:linear-gradient(90deg,rgba(47,140,255,.08),rgba(255,255,255,.015) 65%),#0a1426}
+html body .bc-box::before,html body .bc-it::before{background:#ffc53d;box-shadow:0 0 12px #ffc53d}
+html body .bc-box::after,html body .bc-it::after{background:linear-gradient(225deg,rgba(47,140,255,.55) 0 30%,transparent 31%)}
+html body .bc-box:hover,html body .bc-it:hover{background:linear-gradient(90deg,rgba(47,140,255,.2),rgba(47,140,255,.04) 75%),#0a1426;border-color:rgba(47,140,255,.5)}
+html body .bc-bxs{color:#93a8c8}
+html body .bc-bn small{color:#93a8c8}
+html body .bc-open{border:1px solid rgba(255,197,61,.7);background:linear-gradient(#ffc53d,#b87400);box-shadow:0 0 18px rgba(255,197,61,.3);color:#1b1300}
+html body .bc-c{color:#c2d2ea}
+html body .bc-c:hover{border-color:rgba(47,140,255,.45)}
+html body .bc-c.on{border-color:rgba(47,140,255,.75);background:rgba(47,140,255,.14)}
+html body .bc-ctry{color:#93a8c8}
+html body .bc-sb{color:#93a8c8}
+html body .bc-ms em{color:#93a8c8}
+html body .bc-seg i.on{background:#4d9bff;box-shadow:0 0 5px rgba(47,140,255,.6)}
+html body .bc-st{color:#93a8c8}
+html body .bc-empty{color:#93a8c8}
+html body .bc-btn{border:1px solid rgba(255,197,61,.7);background:linear-gradient(#ffc53d,#b87400);box-shadow:0 0 18px rgba(255,197,61,.3);color:#1b1300}
+html body .bc-btn.ghost{color:#c2d2ea}
+html body .bc-dlg{background:linear-gradient(180deg,#121317,#0a1426);border:1px solid rgba(47,140,255,.3)}
+html body .bc-dlg::before{background:linear-gradient(90deg,transparent,#ffc53d 30%,#ffc53d 70%,transparent)}
+html body .bc-x{color:#c2d2ea}
+html body .bc-x:hover{border-color:rgba(47,140,255,.5)}
+html body .bc-dti small{color:#8fc4ff}
+html body .bc-tag{color:#c2d2ea}
+html body .bc-h4{color:#8fc4ff}
+html body .bc-ch i b{background:linear-gradient(90deg,#1c55c2,#4cc3ff);box-shadow:0 0 8px rgba(47,140,255,.6)}
+html body .bc-drop:hover{background:rgba(47,140,255,.08);border-color:rgba(47,140,255,.4)}
+html body .bc-dft{background:linear-gradient(180deg,rgba(8,20,42,.96),#0a1426)}
+html body .bc-own{color:#93a8c8}
+html body .bc-own.warn{color:#8fc4ff}
+html body .bc-note{color:#93a8c8}
+html body .bc-tph small{color:#8fc4ff}
+html body .bc-pack{background:linear-gradient(180deg,rgba(47,140,255,.12),rgba(255,255,255,.015) 70%),#0a1426;border:1px solid rgba(47,140,255,.32)}
+html body .bc-pack:hover{border-color:rgba(47,140,255,.7)}
+html body .bc-off.base{color:#93a8c8}
+html body .bc-got small{color:#93a8c8}
+html body .bx-res small{color:#8fc4ff}
+html body .bx-res>b{text-shadow:0 0 18px rgba(47,140,255,.35)}
+html body .bc-rs .bc-rsr small{color:#93a8c8}
+html body .tp-steps span.on{border-color:rgba(255,197,61,.6);background:rgba(47,140,255,.1)}
+html body .tp-opt:hover{border-color:rgba(255,197,61,.6);background:rgba(47,140,255,.08)}
+html body .tp-opt small{color:#93a8c8}
+html body .tp-form label small{color:#93a8c8}
+html body .tp-in:focus{border-color:#4d9bff}
+html body .tp-err{background:rgba(47,140,255,.12);border:1px solid rgba(255,197,61,.4)}
+html body .tp-kv span{color:#93a8c8}
+html body .tp-req small{color:#93a8c8}
+html body .tp-req p{color:#c2d2ea}
+html body .tp-done p{color:#c2d2ea}
