@@ -1,0 +1,27 @@
+// Перевірки модуля ДРЛО (етап 8): node tools/test_aew.js
+const fs = require('fs'), path = require('path'), vm = require('vm');
+const root = path.join(__dirname, '..', 'src', 'js');
+const ctx = { console, Math }; ctx.window = ctx; ctx.globalThis = ctx; vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(path.join(root, '02c_radar.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(root, '02j_aew.js'), 'utf8'), ctx);
+const A = ctx.BV_AEW, R = ctx.BV_RADAR;
+let ok = 0, bad = 0; const t = (n, c, x) => { if (c) ok++; else { bad++; console.log('✗', n, x === undefined ? '' : JSON.stringify(x)); } };
+const near = (a, b, e) => Math.abs(a - b) <= (e || 1e-9);
+t('радіолокатор ДРЛО є в BYID', !!R.BYID[A.RADAR.id]);
+t('ДРЛО не потрапляє до каталогу розміщення', !R.catalogFor('ua').some(u => u.id === A.RADAR.id));
+t('кількість позицій каталогу не змінилась (10 UA)', R.catalogFor('ua').length === 10);
+t('на робочій висоті дальність повна', near(A.rangeKm(A.CFG.alt), A.CFG.rangeKm));
+t('дальність спадає на малій висоті', A.rangeKm(1000) < A.rangeKm(5000) && A.rangeKm(5000) < A.rangeKm(7600));
+t('дальність не менша за мінімальну частку', A.rangeKm(1) >= A.CFG.rangeKm * A.CFG.minRangeFrac - 1e-9);
+t('на землі дальність 0', A.rangeKm(0) === 0);
+t('висота: у повітрі — робоча, на землі — 0', A.height('patrol') === A.CFG.alt && A.height('transit') === A.CFG.alt && A.height('rtb') === A.CFG.alt && A.height('base') === 0 && A.height('reload') === 0);
+t('airborne(): перехід/патруль/посадка — так; база/перезарядка — ні', A.airborne('transit') && A.airborne('patrol') && A.airborne('rtb') && !A.airborne('base') && !A.airborne('reload'));
+t('cueOK: супровід із впевненістю — так', A.cueOK({ state: 'tracking', conf: 0.7, lastUpdatedAt: 100 }, 101));
+t('cueOK: виявлено (не супровід) — ні', !A.cueOK({ state: 'detected', conf: 0.9, lastUpdatedAt: 100 }, 101));
+t('cueOK: низька впевненість — ні', !A.cueOK({ state: 'tracking', conf: 0.2, lastUpdatedAt: 100 }, 101));
+t('cueOK: застарілий трек — ні', !A.cueOK({ state: 'identified', conf: 0.9, lastUpdatedAt: 100 }, 100 + A.CFG.cueFreshSec + 1));
+t('cueOK: втрачений — ні', !A.cueOK({ state: 'lost', conf: 0.9, lastUpdatedAt: 100 }, 100));
+t('після виходу в повітря вильотів = запас − 1', A.sortiesAfterTakeoff(3) === 2 && A.sortiesAfterTakeoff(1) === 0 && A.sortiesAfterTakeoff(0) === 0);
+t('нескінченний запас лишається нескінченним', A.sortiesAfterTakeoff(Infinity) === Infinity);
+console.log(`ДРЛО (модуль): OK ${ok}, помилок ${bad}`);
+process.exit(bad ? 1 : 0);
