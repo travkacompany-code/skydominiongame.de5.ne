@@ -1,5 +1,5 @@
 /* ======================================================================
-   BV_AEW — Saab 340 AEW&C (ASC 890), літак дальнього радіолокаційного дозору (етап 8, «BANGVECTOR 2»)
+   BV_AEW — літаки дальнього радіолокаційного дозору: Saab 340 AEW&C (ASC 890, Україна) і А-50У (Росія) (етап 8, «BANGVECTOR 2»)
    Чистий модуль (як 02c_radar.js): не знає про мапу й 03_game.js.
    Клей із грою — tools/aew_glue.js (вшивається в src/js/03_game.js; тут — лише баланс і геометрія).
 
@@ -29,6 +29,13 @@
     maxSorties: 5             // вильотів за один запуск з аеродрому (ліміт вводу в панелі ППО)
   };
 
+  /* ---------- типи ДРЛО: власні дальність, ешелон, коло й радіус наведення (відсутнє поле — з CFG) ---------- */
+  const TYPES = {
+    aew_saab340: { side: "ua", radar: "ua_saab340aew", name: "Saab 340 AEW&C (ASC 890)" },
+    aew_a50: { side: "ru", radar: "ru_a50aew", name: "А-50У (Шмель-М)", alt: 10000, rangeKm: 500, orbitKm: 60, cueKm: 320, turnaround: 90 }
+  };
+  const tp = (key, f) => { const t = TYPES[key]; return t && t[f] != null ? t[f] : CFG[f]; };
+
   /* ---------- запис РЛС для радіолокаційної симуляції (поля — як у CATALOG 02c_radar.js) ---------- */
   const RADAR = {
     id: "ua_saab340aew", side: "ua", name: "Saab 340 AEW&C (ASC 890)",
@@ -39,18 +46,22 @@
     airborne: true
   };
 
+  const RADAR_A50 = Object.assign({}, RADAR, { id: "ru_a50aew", side: "ru", name: "А-50У (Шмель-М)", detectionRangeKm: TYPES.aew_a50.rangeKm });
+  const RADARS = { aew_saab340: RADAR, aew_a50: RADAR_A50 };
+  const radarFor = key => RADARS[key] || RADAR;
+
   /* ---------- геометрія й дальність ---------- */
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
   /* дальність огляду на висоті h, км: на робочій висоті — повна, нижче — спадає як корінь із висоти */
-  function rangeKm(h) {
+  function rangeKm(h, key) {
     if (!(h > 0)) return 0;
-    return CFG.rangeKm * clamp(Math.sqrt(h / CFG.alt), CFG.minRangeFrac, 1);
+    return tp(key, "rangeKm") * clamp(Math.sqrt(h / tp(key, "alt")), CFG.minRangeFrac, 1);
   }
 
   /* висота станції ДРЛО за станом літака: на землі — 0, у польоті — робоча висота */
   const AIRBORNE = { transit: 1, patrol: 1, rtb: 1 };
-  function height(state) { return AIRBORNE[state] ? CFG.alt : 0; }
+  function height(state, key) { return AIRBORNE[state] ? tp(key, "alt") : 0; }
   const airborne = state => !!AIRBORNE[state];
 
   /* трек придатний для наведення: супровід або ідентифікація, достатня впевненість і свіжість даних */
@@ -64,8 +75,8 @@
   /* після посадки на аеродромі: скільки вильотів залишилось */
   const sortiesAfterTakeoff = total => (total === Infinity ? Infinity : Math.max(0, (total | 0) - 1));
 
-  const api = { CFG, RADAR, rangeKm, height, airborne, cueOK, sortiesAfterTakeoff };
+  const api = { CFG, RADAR, RADAR_A50, TYPES, tp, radarFor, rangeKm, height, airborne, cueOK, sortiesAfterTakeoff };
   root.BV_AEW = api;
   /* запис станції — у каталог радіолокатора (без розміщення на землі) */
-  if (root.BV_RADAR && root.BV_RADAR.BYID) root.BV_RADAR.BYID[RADAR.id] = RADAR;
+  if (root.BV_RADAR && root.BV_RADAR.BYID){ root.BV_RADAR.BYID[RADAR.id] = RADAR; root.BV_RADAR.BYID[RADAR_A50.id] = RADAR_A50; }
 })(typeof window !== "undefined" ? window : globalThis);

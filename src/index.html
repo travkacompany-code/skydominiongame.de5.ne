@@ -20,6 +20,20 @@
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>@@F:css/00_style.css@@</style>
+<style id="ld-photo">/* фон екрана завантаження: assets/loads_photo.png */
+html body #loader{background:#050a14 url("@@A:loads_photo.webp@@") 30% 68%/cover no-repeat!important}
+html body #loader .bv2-ld-scene .sky,html body #loader .bv2-ld-scene .scene,html body #loader .bv2-ldmap{display:none}
+html body #loader .bv2-ld-scene .vig{background:linear-gradient(180deg,rgba(3,8,18,.62),transparent 30%),linear-gradient(0deg,rgba(2,6,14,.88),transparent 42%)}
+@media (min-aspect-ratio:1/1){html body #loader{background-position:30% 86%!important}}
+</style>
+<style>@@F:css/174_dragdrop.css@@</style>
+<style>@@F:css/180_quickbar.css@@</style>
+<style>@@F:css/190_ordermenu.css@@</style>
+<style>@@F:css/200_group.css@@</style>
+<style>@@F:css/210_routes.css@@</style>
+<style>@@F:css/215_avtoolbar.css@@</style>
+<style>@@F:css/223_mobile_adp.css@@</style>
+<style>@@F:css/224_landscape.css@@</style>
 </head>
 <body>
 <div id="map"></div>
@@ -210,6 +224,7 @@
 <script>@@F:js/02e_fog.js@@</script>
 <script>@@F:js/02g_tel.js@@</script>
 <script>@@F:js/02i_avia.js@@</script>
+<script>@@F:js/02l_aircombat.js@@</script>
 <script>@@F:js/02j_team.js@@</script>
 <script>@@F:js/02f_boom.js@@</script>
 <script>@@F:js/02d_sprites.js@@</script>
@@ -222,5 +237,20 @@
 <script id="bvSounds">
 @@F:js/07c_sounds.js@@
 </script>
+<script>@@F:js/174_dragdrop.js@@</script>
+<script>@@F:js/180_quickbar.js@@</script>
+<script>@@F:js/190_ordermenu.js@@</script>
+<script>@@F:js/200_group.js@@</script>
+<script>@@F:js/210_routes.js@@</script>
+<script>@@F:js/215_avtoolbar.js@@</script>
+<script>@@F:js/216_postsummary.js@@</script>
+<script>@@F:js/217_link.js@@</script>
+<script>@@F:js/218_damage.js@@</script>
+<script>@@F:js/219_production.js@@</script>
+<script>@@F:js/220_logistics.js@@</script>
+<script>@@F:js/222_reach.js@@</script>
+<script>@@F:js/224_landscape.js@@</script>
+<style>@@F:css/225_hud.css@@</style>
+<script>@@F:js/225_hud.js@@</script>
 </body>
 </html>

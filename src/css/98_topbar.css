@@ -1,72 +1,331 @@
 
 /* ==========================================================================
-   ВЕРХНЯЯ КОМАНДНАЯ ПАНЕЛЬ (#gmBar) — компактная «полоса» по центру сверху
+   SKYDOMINION — COMMAND BAR / MILITARY HUD
    ========================================================================== */
-body.s7-game #gmBar{
-  position:fixed;left:50%;right:auto;top:calc(10px + var(--safe-t));transform:translateX(-50%);
-  width:max-content;max-width:min(1100px,calc(100vw - 24px));height:48px;
-  display:flex;align-items:stretch;gap:0;padding:0!important;overflow-x:auto;overflow-y:hidden;
-  border-radius:var(--r-m)!important;z-index:8;scrollbar-width:none;
+
+body.s7-game #gmBar {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  top: calc(10px + var(--safe-t));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(1100px, calc(100vw - 24px));
+  height: 48px;
+
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  z-index: 8;
+  scrollbar-width: none;
+  border-radius: 7px !important;
+
   background:
-    linear-gradient(90deg,transparent,var(--brass) 20%,var(--brass-2) 50%,var(--brass) 80%,transparent) top/100% 1px no-repeat,
-    linear-gradient(90deg,transparent,rgba(217,179,106,.35),transparent) bottom/100% 1px no-repeat,
-    linear-gradient(180deg,rgba(24,28,36,.9),rgba(8,10,14,.94))!important;
-  box-shadow:0 10px 30px rgba(0,0,0,.55),0 0 0 1px rgba(217,179,106,.14),0 0 40px rgba(217,179,106,.06)!important;
-  animation:barDrop .6s var(--ease) both}
-@keyframes barDrop{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translateX(-50%)}}
-#gmBar::-webkit-scrollbar{display:none}
-#gmBar>*{flex:none;display:flex;align-items:center;position:relative}
-#gmBar>*+*::before{content:"";position:absolute;left:0;top:11px;bottom:11px;width:1px;background:linear-gradient(180deg,transparent,var(--line-3),transparent)}
+    linear-gradient(180deg,
+      rgba(25, 34, 45, .98),
+      rgba(10, 16, 24, .98)) !important;
 
-/* режим и фаза */
-#gmBar .gb-l{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 18px 0 30px;min-width:150px}
-#gmBar .gb-l::after{content:"";position:absolute;left:14px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;
-  background:#38d36b;box-shadow:0 0 0 0 rgba(56,211,107,.6),0 0 10px #38d36b;animation:liveDot 1.8s ease-out infinite}
-@keyframes liveDot{to{box-shadow:0 0 0 8px rgba(56,211,107,0),0 0 10px #38d36b}}
-#gmBar .gb-mode{font:800 12px var(--head);letter-spacing:.18em;text-transform:uppercase;color:#fff;line-height:1}
-#gmBar .gb-ph{font:500 9.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0;line-height:1}
-#gmBar .gb-ph b{color:var(--brass-2)}
+  border: 1px solid rgba(157, 174, 190, .19);
 
-/* часы */
-#gmBar .gb-clock{flex-direction:column;justify-content:center;padding:0 20px;border:0!important;
-  font:600 20px/1 var(--mono);letter-spacing:.08em;color:var(--brass-2);font-variant-numeric:tabular-nums;
-  text-shadow:0 0 16px rgba(217,179,106,.4)}
-#gmBar .gb-clock small{font:500 8px var(--mono);letter-spacing:.3em;color:var(--dim);margin-top:3px;text-transform:uppercase}
+  box-shadow:
+    0 8px 24px rgba(0,0,0,.48),
+    inset 0 1px rgba(255,255,255,.055);
 
-/* счёт: две «таблички» */
-#gmBar .gb-sc{gap:0;padding:0 16px;font:700 19px/1 var(--mono);font-variant-numeric:tabular-nums}
-#gmBar .gb-sc .ua,#gmBar .gb-sc .ru{min-width:34px;text-align:center;padding:6px 8px;border:1px solid;
-  clip-path:var(--chamf-s)}
-#gmBar .gb-sc .ua{color:var(--blue-2);border-color:rgba(63,140,255,.45);background:linear-gradient(180deg,rgba(63,140,255,.18),rgba(63,140,255,.04))}
-#gmBar .gb-sc .ru{color:var(--red-2);border-color:rgba(255,65,54,.45);background:linear-gradient(180deg,rgba(255,65,54,.18),rgba(255,65,54,.04))}
-#gmBar .gb-sc em{margin:0 7px;color:var(--dim);font-style:normal}
-
-/* бюджет */
-#gmBar .gb-money{padding:0 18px;border:0!important;gap:5px;font:600 15px var(--mono);letter-spacing:.03em;color:var(--brass-2);text-shadow:none}
-#gmBar .gb-money small{font:500 8.5px var(--mono);letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
-
-/* кнопки управления */
-#gmBar .gb-r{gap:6px;padding:0 12px 0 16px;margin-left:0}
-#gmBar .chip{height:30px;padding:0 11px!important;display:inline-flex;align-items:center;gap:6px;
-  font:600 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
-  border-radius:var(--r-s)!important;border:1px solid var(--line-2);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.015));color:var(--text-2)}
-#gmBar .chip:hover{border-color:var(--brass);color:var(--brass-2);background:var(--brass-soft);transform:translateY(-1px)}
-#gmBar .chip:active{transform:scale(.95)}
-#gmBar .chip.go{border-color:rgba(56,211,107,.55);color:#c4f5d6;background:linear-gradient(180deg,rgba(56,211,107,.2),rgba(56,211,107,.05))}
-#gmBar .chip.hot{border-color:rgba(255,200,60,.7);color:#ffe6a0;background:rgba(255,200,60,.12)}
-#gmBar .chip.gm-surr{border-color:rgba(255,65,54,.45);color:#ffb3ad}
-#gmBar .chip .bd{min-width:16px;height:16px;line-height:16px;border-radius:2px;background:var(--red);font:700 9px var(--mono);margin:0}
-/* скорость — единый сегмент */
-#gmBar .spd{gap:0;border:1px solid var(--line-2);border-radius:var(--r-s);overflow:hidden;height:30px}
-#gmBar .spd .chip{height:28px;border:0;border-radius:0!important;border-right:1px solid var(--line)!important;padding:0 9px!important;background:transparent}
-#gmBar .spd .chip:last-child{border-right:0!important}
-#gmBar .spd .chip.on{background:var(--brass)!important;color:#1a1306!important;box-shadow:0 0 14px rgba(217,179,106,.5)}
-
-/* компактный режим */
-@media (max-width:900px){
-  body.s7-game #gmBar{max-width:calc(100vw - 16px);height:44px}
-  #gmBar .gb-l{min-width:0;padding:0 12px 0 26px}#gmBar .gb-clock{padding:0 12px;font-size:16px}
-  #gmBar .gb-sc{padding:0 10px;font-size:15px}#gmBar .gb-money{padding:0 12px;font-size:13px}
-  #gmBar .gb-r{padding:0 8px 0 10px}
+  animation: barDrop .4s ease both;
 }
-@media (prefers-reduced-motion:reduce){body.s7-game #gmBar,#gmBar .gb-l::after{animation:none!important}}
+
+@keyframes barDrop {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+#gmBar::-webkit-scrollbar { display: none; }
+
+#gmBar > * {
+  flex: none;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+#gmBar > * + *::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: rgba(160,180,200,.15);
+}
+
+/* РЕЖИМ И ФАЗА */
+
+#gmBar .gb-l {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 17px 0 29px;
+  min-width: 145px;
+}
+
+#gmBar .gb-l::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: #63c58a;
+  box-shadow: 0 0 7px rgba(99,197,138,.4);
+}
+
+#gmBar .gb-mode {
+  font: 800 11px var(--head);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #e4eaf0;
+  line-height: 1;
+}
+
+#gmBar .gb-ph {
+  font: 500 9px var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #8493a4;
+  margin: 0;
+  line-height: 1;
+}
+
+#gmBar .gb-ph b {
+  color: #d4ad65;
+}
+
+/* ИГРОВЫЕ ЧАСЫ */
+
+#gmBar .gb-clock {
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 18px;
+  border: 0 !important;
+
+  font: 600 19px/1 var(--mono);
+  letter-spacing: .045em;
+  color: #e4c486;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+
+#gmBar .gb-clock small {
+  font: 500 8px var(--mono);
+  letter-spacing: .2em;
+  color: #78899c;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+/* СЧЁТ */
+
+#gmBar .gb-sc {
+  gap: 0;
+  padding: 0 14px;
+  font: 700 17px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+#gmBar .gb-sc .ua,
+#gmBar .gb-sc .ru {
+  min-width: 32px;
+  text-align: center;
+  padding: 5px 7px;
+  border: 1px solid;
+  clip-path: var(--chamf-s);
+}
+
+#gmBar .gb-sc .ua {
+  color: #83b9ed;
+  border-color: rgba(82,145,205,.35);
+  background: rgba(62,125,185,.12);
+}
+
+#gmBar .gb-sc .ru {
+  color: #e78d88;
+  border-color: rgba(196,91,85,.35);
+  background: rgba(170,65,60,.12);
+}
+
+#gmBar .gb-sc em {
+  margin: 0 7px;
+  color: #687789;
+  font-style: normal;
+}
+
+/* БЮДЖЕТ */
+
+#gmBar .gb-money {
+  padding: 0 16px;
+  border: 0 !important;
+  gap: 6px;
+  font: 600 14px var(--mono);
+  color: #d9bd82;
+  letter-spacing: .02em;
+}
+
+#gmBar .gb-money small {
+  font: 500 8px var(--mono);
+  letter-spacing: .16em;
+  color: #8493a4;
+  text-transform: uppercase;
+}
+
+/* КНОПКИ */
+
+#gmBar .gb-r {
+  gap: 5px;
+  padding: 0 10px 0 13px;
+  margin-left: 0;
+}
+
+#gmBar .chip {
+  height: 29px;
+  padding: 0 10px !important;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  font: 600 9px var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  border-radius: 4px !important;
+  border: 1px solid rgba(147,166,187,.22);
+
+  background: rgba(255,255,255,.035);
+  color: #b8c5d2;
+
+  transition: .18s ease;
+}
+
+#gmBar .chip:hover {
+  border-color: rgba(212,173,101,.55);
+  color: #e8d3a7;
+  background: rgba(212,173,101,.08);
+}
+
+#gmBar .chip:active {
+  transform: scale(.96);
+}
+
+#gmBar .chip.go {
+  border-color: rgba(80,175,117,.4);
+  color: #a8d9b9;
+  background: rgba(55,140,88,.1);
+}
+
+#gmBar .chip.hot {
+  border-color: rgba(212,173,101,.5);
+  color: #e8c982;
+  background: rgba(212,173,101,.09);
+}
+
+#gmBar .chip.gm-surr {
+  border-color: rgba(190,85,80,.4);
+  color: #e5a09b;
+  background: rgba(160,60,55,.08);
+}
+
+#gmBar .chip .bd {
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  border-radius: 3px;
+  background: #a74743;
+  font: 700 9px var(--mono);
+  margin: 0;
+}
+
+/* СКОРОСТЬ */
+
+#gmBar .spd {
+  gap: 0;
+  border: 1px solid rgba(147,166,187,.22);
+  border-radius: 4px;
+  overflow: hidden;
+  height: 29px;
+}
+
+#gmBar .spd .chip {
+  height: 27px;
+  border: 0;
+  border-radius: 0 !important;
+  border-right: 1px solid rgba(147,166,187,.15) !important;
+  padding: 0 9px !important;
+  background: transparent;
+}
+
+#gmBar .spd .chip:last-child {
+  border-right: 0 !important;
+}
+
+#gmBar .spd .chip.on {
+  background: #b99a62 !important;
+  color: #171b20 !important;
+  box-shadow: none;
+}
+
+/* МОБИЛЬНАЯ ВЕРСИЯ */
+
+@media (max-width: 900px) {
+  body.s7-game #gmBar {
+    max-width: calc(100vw - 12px);
+    height: 43px;
+    border-radius: 6px !important;
+  }
+
+  #gmBar .gb-l {
+    min-width: 0;
+    padding: 0 11px 0 24px;
+  }
+
+  #gmBar .gb-mode { font-size: 10px; }
+  #gmBar .gb-ph { font-size: 8px; }
+
+  #gmBar .gb-clock {
+    padding: 0 11px;
+    font-size: 15px;
+  }
+
+  #gmBar .gb-sc {
+    padding: 0 8px;
+    font-size: 14px;
+  }
+
+  #gmBar .gb-money {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  #gmBar .gb-r {
+    padding: 0 7px 0 9px;
+  }
+
+  #gmBar .chip {
+    height: 27px;
+    padding: 0 8px !important;
+    font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.s7-game #gmBar {
+    animation: none !important;
+  }
+}

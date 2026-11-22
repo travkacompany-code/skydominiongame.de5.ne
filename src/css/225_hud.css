@@ -1,0 +1,208 @@
+/* SKYDOMINION · 225 · tactical HUD для горизонтального экрана (BV2).
+   Графит + navy + cyan. Карта на весь экран, поверх неё компактные плавающие элементы:
+   верхняя панель, левый dock, правый стек управления картой, нижний журнал событий.
+   Только оформление и расположение: игровая логика не затрагивается (кнопки dock вызывают штатные кнопки игры).
+   Работает в бою (body.s7-game) и в ландшафте; портрет не меняется. */
+:root{
+  --h-bg:rgba(10,16,27,.86); --h-bg2:rgba(14,22,36,.94); --h-line:rgba(76,195,255,.24); --h-line2:rgba(76,195,255,.55);
+  --h-tx:#d9e6f7; --h-mut:#7f97b8; --h-cy:#4cc3ff; --h-cy2:#22d3ee; --h-warn:#ffc53d; --h-bad:#ff6b5f; --h-ok:#35d07f;
+  --h-top:42px; --h-side:54px; --h-log:32px; --h-gap:8px; --h-b:40px;
+  --h-sl:max(8px,env(safe-area-inset-left,0px)); --h-sr:max(8px,env(safe-area-inset-right,0px));
+  --h-st:max(6px,env(safe-area-inset-top,0px)); --h-sb:max(6px,env(safe-area-inset-bottom,0px));
+  --h-e:cubic-bezier(.2,.8,.2,1);
+}
+@media (pointer:coarse){:root{--h-b:46px;--h-side:58px}}
+@media (orientation:landscape) and (max-height:480px){:root{--h-top:38px;--h-b:38px;--h-log:30px}}
+@media (pointer:coarse) and (orientation:landscape) and (max-height:480px){:root{--h-b:40px}}
+@media (min-width:1700px){:root{--h-top:46px;--h-b:44px;--h-side:60px}}
+body:not(.s7-game) #hudDock,body:not(.s7-game) #hudLog,body:not(.s7-game) #hudDockFold{display:none!important}
+
+@keyframes hudIn{from{opacity:0;transform:translateY(-6px) scale(.985)}}
+@keyframes hudInL{from{opacity:0;transform:translateX(-8px)}}
+@keyframes hudUp{from{opacity:0;transform:translateY(8px)}}
+
+@media (orientation:landscape){
+/* ---------- верхняя панель ---------- */
+html body.s7-game #gmBar{position:fixed!important;top:var(--h-st)!important;left:var(--h-sl)!important;right:var(--h-sr)!important;bottom:auto!important;
+  width:auto!important;height:var(--h-top)!important;min-height:0!important;max-height:none!important;margin:0!important;padding:0 10px!important;
+  display:flex!important;flex-wrap:nowrap!important;align-items:center!important;gap:12px!important;overflow:hidden;
+  background:var(--h-bg)!important;border:1px solid var(--h-line)!important;border-radius:10px!important;
+  box-shadow:0 6px 20px rgba(0,0,0,.35)!important;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transform:none!important}
+html body.s7-game #gmBar .gb-l{display:flex!important;align-items:baseline;gap:10px;min-width:0;flex:0 1 auto;white-space:nowrap}
+html body.s7-game #gmBar .gb-mode{font:700 12px/1 "Exo 2",system-ui,sans-serif!important;letter-spacing:.06em;text-transform:uppercase;color:var(--h-cy)!important;margin:0!important}
+html body.s7-game #gmBar .gb-ph{font:500 11px/1 "Exo 2",system-ui,sans-serif!important;color:var(--h-mut)!important;margin:0!important;overflow:hidden;text-overflow:ellipsis}
+html body.s7-game #gmBar .gb-ph b{color:var(--h-warn);font-weight:700}
+html body.s7-game #gmBar .gb-clock{font:700 15px/1 "Exo 2",system-ui,sans-serif!important;color:var(--h-tx)!important;display:flex;align-items:baseline;gap:6px;margin:0!important;padding:0!important;white-space:nowrap}
+html body.s7-game #gmBar .gb-clock small{font:500 10px/1 "Exo 2",sans-serif;color:var(--h-mut);letter-spacing:.08em;display:inline!important}
+html body.s7-game #gmBar .gb-sc{display:flex;align-items:center;gap:4px;margin:0!important;padding:0!important;white-space:nowrap;font-size:13px}
+html body.s7-game #gmBar .gb-sc span{min-width:26px;height:24px;line-height:24px;padding:0 6px;text-align:center;border-radius:6px;font-weight:700;font-size:13px}
+html body.s7-game #gmBar .gb-sc em{color:var(--h-mut);font-style:normal}
+html body.s7-game #gmBar .gb-money{display:flex;align-items:baseline;gap:4px;margin:0!important;padding:0!important;font:700 13px/1 "Exo 2",sans-serif;color:var(--h-warn);white-space:nowrap}
+html body.s7-game #gmBar .gb-money small{font-size:9px;color:var(--h-mut);letter-spacing:.08em;text-transform:uppercase}
+html body.s7-game #gmBar .gb-r{display:flex!important;flex-wrap:nowrap;align-items:center;gap:6px!important;margin:0 0 0 auto!important;padding:0!important;overflow:visible!important;flex:0 0 auto}
+html body.s7-game #gmBar .gb-r>:not([data-s7="gmready"]):not([data-s7="gmpause"]){display:none!important}
+html body.s7-game #gmBar .gb-r>.chip{height:28px!important;min-height:0!important;padding:0 12px!important;font:700 11px/1 "Exo 2",sans-serif!important;letter-spacing:.05em;border-radius:7px!important;
+  background:rgba(76,195,255,.08)!important;border:1px solid var(--h-line)!important;color:var(--h-tx)!important;clip-path:none!important;transition:background .18s,border-color .18s,transform .12s}
+html body.s7-game #gmBar .gb-r>.chip:hover{border-color:var(--h-line2)!important;background:rgba(76,195,255,.16)!important}
+html body.s7-game #gmBar .gb-r>.chip:active{transform:scale(.96)}
+html body.s7-game #gmBar .gb-r>.chip.hot{background:rgba(255,197,61,.14)!important;border-color:rgba(255,197,61,.6)!important;color:var(--h-warn)!important}
+@media (pointer:coarse){html body.s7-game #gmBar .gb-r>.chip{height:34px!important;min-width:40px}}
+@media (max-width:760px){html body.s7-game #gmBar .gb-ph,html body.s7-game #gmBar .gb-sc{display:none!important}html body.s7-game #gmBar{gap:8px!important}}
+@media (max-width:560px){html body.s7-game #gmBar .gb-money{display:none!important}}
+
+/* ---------- левый dock ---------- */
+#hudDock{position:fixed;z-index:9;left:var(--h-sl);top:calc(var(--h-st) + var(--h-top) + var(--h-gap) + 32px);
+  max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3 - 32px);
+  display:flex;flex-direction:column;gap:4px;padding:4px;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;
+  background:var(--h-bg);border:1px solid var(--h-line);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.35);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:hudInL .3s var(--h-e) backwards;
+  transition:opacity .22s,transform .25s var(--h-e)}
+#hudDock::-webkit-scrollbar{display:none}
+body.hud-dock-off #hudDock{opacity:0;transform:translateX(-14px);pointer-events:none;visibility:hidden;transition:opacity .22s,transform .25s var(--h-e),visibility 0s .25s}
+.hd-b{position:relative;flex:0 0 auto;width:var(--h-b);height:var(--h-b);display:grid;place-items:center;padding:0;border:1px solid transparent;border-radius:9px;
+  background:transparent;color:var(--h-tx);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:background .16s,border-color .16s,color .16s,transform .12s}
+.hd-b svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.hd-b .hd-t{font:800 italic 12px/1 "Exo 2",sans-serif;letter-spacing:.05em;pointer-events:none}
+.hd-b:hover{background:rgba(76,195,255,.12);border-color:var(--h-line)}
+.hd-b:active{transform:scale(.92)}
+.hd-b:focus-visible{outline:2px solid var(--h-cy);outline-offset:1px}
+.hd-b.on{background:rgba(76,195,255,.18);border-color:var(--h-line2);color:var(--h-cy)}
+.hd-b.warn{color:var(--h-bad)}
+.hd-sep{flex:0 0 auto;height:1px;margin:2px 6px;background:var(--h-line)}
+@media (hover:hover) and (pointer:fine){
+  .hd-b[data-tip]::after,#hudRight .hr-b[data-tip]::after{content:attr(data-tip);position:absolute;top:50%;left:calc(100% + 10px);transform:translate(-4px,-50%);white-space:nowrap;
+    padding:5px 9px;border-radius:7px;font:600 11px/1 "Exo 2",sans-serif;background:var(--h-bg2);border:1px solid var(--h-line);color:var(--h-tx);pointer-events:none;opacity:0;transition:opacity .15s,transform .15s;z-index:3}
+  .hd-b:hover::after,#hudRight .hr-b:hover::after{opacity:1;transform:translate(0,-50%);transition-delay:.35s}
+}
+#hudDockFold{position:fixed;z-index:9;left:var(--h-sl);top:calc(var(--h-st) + var(--h-top) + var(--h-gap));display:none}
+#hudDockFold{width:var(--h-b);height:26px;padding:0;border-radius:9px;background:var(--h-bg);border:1px solid var(--h-line);color:var(--h-mut);cursor:pointer;place-items:center;transition:color .15s,border-color .15s,transform .25s}
+#hudDockFold svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .25s}
+#hudDockFold:hover{color:var(--h-cy);border-color:var(--h-line2)}
+body.hud-dock-off #hudDockFold svg{transform:rotate(180deg)}
+body.s7-game #hudDockFold{display:grid}
+
+/* ---------- правые плавающие кнопки карты ---------- */
+html body.s7-game #controls{position:fixed!important;z-index:9!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;right:var(--h-sr)!important;left:auto!important;bottom:auto!important;
+  transform:none!important;width:auto!important;height:auto!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;
+  display:flex!important;flex-direction:column!important;gap:4px!important;padding:4px!important;overflow-y:auto;scrollbar-width:none;
+  background:var(--h-bg)!important;border:1px solid var(--h-line)!important;border-radius:12px!important;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:hudIn .3s var(--h-e) backwards}
+html body.s7-game:has(#launch.open,#adp.open,#facp.open,#lgp.open,#gmStat.on,#gmChat.on,#gmFree.on) #controls{right:var(--h-sr)!important;bottom:auto!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important}
+html body.s7-game #controls::-webkit-scrollbar{display:none}
+html body.s7-game #controls::before,html body.s7-game #controls::after{display:none!important}
+html body.s7-game #controls .btn,#hudRight .hr-b{position:relative;width:var(--h-b)!important;height:var(--h-b)!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;flex:0 0 auto;display:grid!important;place-items:center;
+  border-radius:9px!important;background:transparent!important;border:1px solid transparent!important;color:var(--h-tx)!important;clip-path:none!important;cursor:pointer;transition:background .16s,border-color .16s,color .16s,transform .12s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html body.s7-game #controls .btn svg,#hudRight .hr-b svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+html body.s7-game #controls .btn:hover,#hudRight .hr-b:hover{background:rgba(76,195,255,.12)!important;border-color:var(--h-line)!important}
+html body.s7-game #controls .btn:active,#hudRight .hr-b:active{transform:scale(.92)}
+html body.s7-game #controls .btn.on,#hudRight .hr-b.on{background:rgba(76,195,255,.18)!important;border-color:var(--h-line2)!important;color:var(--h-cy)!important}
+#hudRight{display:contents}
+html body.s7-game #controls .hr-sep{height:1px;margin:2px 6px;background:var(--h-line);flex:0 0 auto}
+
+/* ---------- легенда и слои: плавающие карточки по кнопке ---------- */
+html body.s7-game #legend{display:none!important}
+html body.s7-game.hud-leg #legend{display:block!important;position:fixed!important;z-index:8;left:calc(var(--h-sl) + var(--h-side) + 4px)!important;right:auto!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;bottom:auto!important;
+  width:min(280px,calc(100vw - 180px))!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;overflow:auto!important;
+  background:var(--h-bg2)!important;border:1px solid var(--h-line)!important;border-radius:12px!important;backdrop-filter:blur(10px);animation:hudInL .25s var(--h-e) backwards;overscroll-behavior:contain;opacity:1!important;pointer-events:auto!important;visibility:visible!important;transform:none!important}
+html body.s7-game.hud-leg #legend .bd{display:block!important}
+html body.s7-game #layers{position:fixed!important;z-index:9!important;right:calc(var(--h-sr) + var(--h-side) - 2px)!important;left:auto!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;bottom:auto!important;
+  width:min(270px,calc(100vw - 180px))!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;overflow:auto!important;overscroll-behavior:contain;
+  background:var(--h-bg2)!important;border:1px solid var(--h-line)!important;border-radius:12px!important;backdrop-filter:blur(10px);transform:none!important}
+html body.s7-game #layers.open{opacity:1!important;pointer-events:auto!important;visibility:visible!important}
+
+/* ---------- координаты уезжают в журнал ---------- */
+html body.s7-game #coords{display:none!important}
+html body.s7-game .maplibregl-ctrl-bottom-left{bottom:calc(var(--h-log) + var(--h-sb) + 4px)!important;left:calc(var(--h-sl) + var(--h-side) + 6px)!important;opacity:.75}
+
+/* ---------- нижний журнал событий ---------- */
+#hudLog{position:fixed;z-index:9;left:50%;bottom:var(--h-sb);transform:translateX(-50%);width:min(680px,calc(100vw - var(--h-side)*2 - 40px));
+  display:flex;flex-direction:column;background:var(--h-bg);border:1px solid var(--h-line);border-radius:10px;overflow:hidden;
+  box-shadow:0 6px 20px rgba(0,0,0,.35);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);animation:hudUp .3s var(--h-e) backwards}
+#hudLog .hl-h{display:flex;align-items:center;gap:8px;height:var(--h-log);min-height:var(--h-log);padding:0 6px 0 10px;width:100%;border:0;background:transparent;color:var(--h-tx);cursor:pointer;text-align:left;font:500 12px/1 "Exo 2",system-ui,sans-serif;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#hudLog .hl-h:focus-visible{outline:2px solid var(--h-cy);outline-offset:-2px}
+#hudLog .hl-ch{width:14px;height:14px;flex:0 0 auto;fill:none;stroke:var(--h-mut);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .25s var(--h-e)}
+#hudLog.open .hl-ch{transform:rotate(180deg)}
+#hudLog .hl-ttl{flex:0 0 auto;font-weight:800;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--h-mut)}
+#hudLog .hl-last{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--h-tx)}
+#hudLog .hl-last i,#hudLog .hl-r i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;vertical-align:1px;background:var(--h-cy)}
+#hudLog .hl-badge{flex:0 0 auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--h-cy);color:#04101c;font:800 11px/18px "Exo 2",sans-serif;text-align:center;display:none}
+#hudLog.has-new:not(.open) .hl-badge{display:block;animation:hudIn .25s var(--h-e)}
+#hudLog .hl-co{flex:0 0 auto;font:500 11px/1 "Exo 2",ui-monospace,monospace;color:var(--h-mut);font-variant-numeric:tabular-nums;white-space:nowrap}
+#hudLog .hl-body{display:block;max-height:0;overflow-y:auto;overscroll-behavior:contain;transition:max-height .28s var(--h-e);border-top:1px solid transparent;scrollbar-width:thin;scrollbar-color:var(--h-line2) transparent}
+#hudLog.open .hl-body{max-height:min(34dvh,240px);border-top-color:var(--h-line)}
+#hudLog .hl-r{display:flex;gap:8px;align-items:baseline;padding:6px 12px;font:500 12px/1.3 "Exo 2",sans-serif;color:var(--h-tx);border-bottom:1px solid rgba(76,195,255,.07)}
+#hudLog .hl-r:last-child{border-bottom:0}
+#hudLog .hl-r time{flex:0 0 auto;color:var(--h-mut);font-variant-numeric:tabular-nums;font-size:11px;min-width:38px}
+#hudLog .hl-r span{min-width:0;overflow-wrap:anywhere}
+#hudLog .hl-r em{font-style:normal;color:var(--h-mut);margin-left:4px}
+#hudLog .hl-r.new{animation:hudUp .25s var(--h-e) backwards}
+#hudLog .k-alert i{background:var(--h-bad)}#hudLog .k-warn i{background:var(--h-warn)}#hudLog .k-ok i{background:var(--h-ok)}#hudLog .k-info i{background:var(--h-cy)}
+#hudLog .hl-empty{padding:10px 12px;color:var(--h-mut);font-size:12px}
+#hudLog .hl-tools{display:none;justify-content:flex-end;padding:4px 8px;border-top:1px solid var(--h-line)}
+#hudLog.open .hl-tools{display:flex}
+#hudLog .hl-clr{height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--h-line);background:transparent;color:var(--h-mut);font:600 11px/1 "Exo 2",sans-serif;cursor:pointer}
+#hudLog .hl-clr:hover{color:var(--h-tx);border-color:var(--h-line2)}
+@media (max-width:620px){#hudLog .hl-co{display:none}}
+
+/* ---------- панели: компактные плавающие карточки справа ---------- */
+html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree){position:fixed!important;z-index:10!important;left:auto!important;bottom:auto!important;
+  right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;
+  width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;
+  max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;
+  overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border-radius:12px!important;
+  background:var(--h-bg2)!important;border:1px solid var(--h-line)!important;box-shadow:0 10px 30px rgba(0,0,0,.45)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  animation:hudIn .24s var(--h-e) backwards;scrollbar-width:thin;scrollbar-color:var(--h-line2) transparent}
+html body.s7-game #adp.open.open.open{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;
+  width:clamp(260px,32vw,360px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;display:block!important;overflow-y:auto!important;border-radius:12px!important}
+html body.s7-game #launch.open.open.open{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:12px!important}
+html body.s7-game #facp.open.open.open{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:12px!important}
+html body.s7-game #lgp.open.open.open{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:12px!important}
+html body.s7-game #gmChat.on.on.on{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:12px!important}
+html body.s7-game #gmStat.on.on.on{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:12px!important}
+html body.s7-game #gmFree.on.on.on{position:fixed!important;left:auto!important;bottom:auto!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:clamp(260px,32vw,360px)!important;max-width:calc(100vw - var(--h-side)*2 - 28px)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:12px!important}
+html body.s7-game :is(#launch,#facp,#lgp,#gmChat,#gmStat,#gmFree).fold.fold.fold{max-height:none!important;overflow:hidden!important}
+html body.s7-game #adp.open.open.open #adBody{max-height:none!important;overflow:visible!important;flex:none!important}
+html body.s7-game :is(#launch,#adp,#facp,#lgp) .lp-head{padding:8px 96px 8px 12px!important;min-height:0!important}
+html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree) .lp-foot{position:sticky;bottom:0;z-index:2;background:linear-gradient(180deg,rgba(14,22,36,.6),rgba(14,22,36,.98))!important;padding:8px 10px!important}
+html body.s7-game :is(#launch,#adp) .lp-weap{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}
+html body.s7-game :is(#launch,#adp) .lp-weap .wcard,html body.s7-game :is(#launch,#adp) .wcard{min-height:74px!important}
+html body.s7-game :is(#launch,#adp,#facp,#lgp) .lp-foot button{min-height:40px}
+html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree).fold{overflow:hidden!important}
+html body.s7-game :is(#launch,#adp,#facp,#lgp) > .pn-fold{top:6px!important;right:50px!important;width:34px!important;height:34px!important;border-radius:8px}
+html body.s7-game :is(#launch,#adp,#facp,#lgp) .lp-x{border-radius:8px}
+html body.s7-game #gmChat,html body.s7-game #gmStat,html body.s7-game #gmFree{right:calc(var(--h-sr) + var(--h-side) + 2px)!important}
+/* телефон Bgram, дипломатия, ПУ */
+html body.s7-game #bgPhone{top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;bottom:calc(var(--h-sb) + var(--h-log) + var(--h-gap))!important;height:auto!important;
+  right:calc(var(--h-sr) + var(--h-side) + 2px)!important;left:auto!important;width:clamp(210px,26vw,260px)!important;max-height:none!important;border-radius:18px!important}
+html body.s7-game #gmDip{top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;bottom:calc(var(--h-sb) + var(--h-log) + var(--h-gap))!important;height:auto!important;max-height:none!important;
+  left:calc(var(--h-sl) + var(--h-side) + 4px)!important;right:auto!important;width:min(520px,calc(100vw - var(--h-side)*2 - 270px))!important;min-width:300px;border-radius:12px!important;overflow:auto;
+  background:var(--h-bg2)!important;border:1px solid var(--h-line)!important;backdrop-filter:blur(12px)}
+html body.s7-game .tel-fab{display:none!important}
+html body.s7-game .tel-panel{left:calc(var(--h-sl) + var(--h-side) + 4px)!important;top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;width:min(340px,calc(100vw - 200px))!important;
+  max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-sb) - var(--h-gap)*3)!important;border-radius:12px!important;background:var(--h-bg2)!important;border-color:var(--h-line)!important}
+html body.s7-game .tel-pop{top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;right:calc(var(--h-sr) + var(--h-side) + 4px)!important}
+html body.s7-game .tel-pickbar{bottom:calc(var(--h-sb) + var(--h-log) + var(--h-gap))!important}
+
+/* ---------- всплывающие подсказки и строки состояния ---------- */
+html body.s7-game #toast{top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;bottom:auto!important;left:50%!important;right:auto!important;width:max-content;max-width:min(520px,calc(100vw - var(--h-side)*2 - 40px))!important;border-radius:10px!important}
+html body.s7-game #bgNote{top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important;right:calc(var(--h-sr) + var(--h-side) + 2px)!important;left:auto!important;max-width:min(300px,40vw)}
+html body.s7-game :is(#selbar,#pickbar,#followBar){position:fixed!important;top:auto!important;left:50%!important;right:auto!important;bottom:calc(var(--h-sb) + var(--h-log) + var(--h-gap))!important;
+  width:max-content;max-width:min(640px,calc(100vw - var(--h-side)*2 - 40px))!important;border-radius:10px!important;background:var(--h-bg2)!important;border:1px solid var(--h-line)!important;backdrop-filter:blur(10px)}
+html body.s7-game #gmSpec{top:calc(var(--h-st) + var(--h-top) + var(--h-gap))!important}
+/* быстрый доступ к технике и меню наказов */
+html body.s7-game:has(#adp) #qkToggle{right:var(--h-sr)!important;bottom:calc(var(--h-sb) + var(--h-log) + var(--h-gap))!important;width:var(--h-b)!important;height:var(--h-b)!important;border-radius:10px!important;background:var(--h-bg)!important;border:1px solid var(--h-line)!important}
+html body.s7-game:has(#adp) #qkBar{right:var(--h-sr)!important;bottom:calc(var(--h-sb) + var(--h-log) + var(--h-b) + var(--h-gap)*2)!important;max-height:calc(100dvh - var(--h-st) - var(--h-top) - var(--h-log) - var(--h-b) - var(--h-sb) - var(--h-gap)*4)!important;
+  border-radius:12px!important;background:var(--h-bg2)!important;border:1px solid var(--h-line)!important;animation:hudUp .22s var(--h-e) backwards}
+html body.s7-game :is(#ordMenu,#grpMenu){max-height:calc(100dvh - 16px);overflow:auto;border-radius:10px!important;border-color:var(--h-line)!important;animation:hudIn .16s var(--h-e) backwards}
+}
+
+/* ---------- мелкие экраны: плотнее ---------- */
+@media (orientation:landscape) and (max-height:480px){#hudRight #hudFs{display:none!important}#hudRight .hr-sep{margin:1px 6px}#hudDock .hd-b{width:36px;height:36px}#hudDock{gap:3px}#hudDock .hd-sep{margin:1px 6px}}
+@media (pointer:coarse) and (orientation:landscape) and (max-height:480px){#hudDock .hd-b{width:40px;height:40px}}
+@media (orientation:landscape) and (max-height:480px){
+  html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree),html body.s7-game #adp.open.open.open{width:clamp(250px,38vw,340px)!important}
+  html body.s7-game #hudLog .hl-r{padding:4px 10px}
+}
+@media (prefers-reduced-motion:reduce){
+  #hudDock,#hudLog,html body.s7-game #controls,html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree),#hudLog .hl-r.new{animation:none!important}
+  #hudLog .hl-body,.hd-b,#hudLog .hl-ch{transition:none!important}
+}

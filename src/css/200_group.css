@@ -1,0 +1,23 @@
+/* SKYDOMINION · 200 · підрозділи й рамка (етап 4). BV2 AAA: синя рамка, золоті кільця вибраного підрозділу. */
+#mselBtn{position:static;right:14px;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:61;min-height:40px;padding:6px 12px;
+  background:linear-gradient(180deg,rgba(14,26,46,.94),rgba(8,15,30,.94));border:1px solid rgba(88,150,255,.45);color:#dbe7ff;
+  border-radius:3px;font:inherit;font-size:12px;letter-spacing:.04em;cursor:pointer}
+#mselBtn:hover,#mselBtn:focus-visible{outline:none;border-color:#4cc3ff}
+#mselBtn.on{border-color:#ffc53d;color:#ffc53d;box-shadow:inset 0 0 0 1px #ffc53d}
+#mselBox{position:fixed;z-index:70;pointer-events:none;border:1px dashed #4cc3ff;background:rgba(76,195,255,.12)}
+#mselBox[hidden]{display:none}
+#mselRings{position:fixed;inset:0;pointer-events:none;z-index:55}
+#mselRings i{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border:2px solid #ffc53d;border-radius:50%;box-shadow:0 0 8px rgba(255,197,61,.6)}
+#qkBar .qk-u.grp{border-color:#ffc53d;background:rgba(255,197,61,.08)}
+#grpMenu{position:fixed;z-index:80;min-width:216px;max-width:min(92vw,268px);padding:6px;
+  background:linear-gradient(180deg,rgba(14,26,46,.97),rgba(8,15,30,.97));border:1px solid rgba(88,150,255,.5);border-radius:4px;box-shadow:0 10px 24px rgba(0,0,0,.55)}
+#grpMenu[hidden]{display:none}
+#grpMenu .om-h{padding:4px 8px 8px;border-bottom:1px solid rgba(88,150,255,.25);margin-bottom:4px}
+#grpMenu .om-h b{display:block;font-size:13px;color:#ffc53d}
+#grpMenu .om-h small{display:block;margin-top:2px;font-size:11px;color:#8fb0e0}
+#grpMenu .om-i{display:block;width:100%;min-height:40px;padding:8px 10px;text-align:left;cursor:pointer;background:transparent;border:1px solid transparent;color:#dbe7ff;border-radius:3px;font:inherit;font-size:13px}
+#grpMenu .om-i:hover,#grpMenu .om-i:focus-visible{outline:none;border-color:#4cc3ff;background:rgba(47,140,255,.18)}
+#grpMenu .om-i:disabled{color:#56678a;cursor:default;background:transparent;border-color:transparent}
+#grpMenu .om-danger{color:#ff9a8f}
+#grpMenu .om-danger:hover,#grpMenu .om-danger:focus-visible{border-color:#ff5a4d;background:rgba(255,90,77,.12)}
+#grpMenu .om-sep{height:1px;margin:4px 6px;background:rgba(88,150,255,.25)}

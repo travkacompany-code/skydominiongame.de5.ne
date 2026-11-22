@@ -596,6 +596,7 @@ const SPRITES = {
   "tsirkon": { "w": 160, "h": 159, "src": "@@A:283836e5f9bf.webp@@" },
   "su34": { "w": 200, "h": 200, "src": "@@A:51f2ec0b553e.webp@@" },
   "mig29": { "w": 198, "h": 200, "src": "@@A:a6db95873611.webp@@" },
+  "aew_a50": { "w": 240, "h": 240, "src": "@@A:aew_a50.webp@@" },
   "aew": { "w": 240, "h": 240, "src": "@@A:aew_saab340.webp@@" },
   "su27": { "w": 200, "h": 199, "src": "@@A:4c003c5cda6b.webp@@" },
   "su24": { "w": 200, "h": 200, "src": "@@A:144bfa90156c.webp@@" },
@@ -1185,8 +1186,9 @@ function transitInit(){
 }
 const transitBlocked = p => { transitInit(); return gBlockedXY(FOREIGN_T, p[0], p[1]); };
 /* маршрут повітряної цілі без прольоту вглиб інших країн: ділянки над чужою сушею (далі транзитної смуги) замінюються обходом (A* по сітці 0,05°) */
+let ROUTE_SIDE = null;      /* dip:air — сторона, для якої прокладається маршрут (дозволи на повітряний простір) */
 function avoidForeign(P, strict){
-  const FG = strict ? gridInit(FOREIGN) : transitInit();      // strict — без транзитної смуги (колії, дороги)
+  const FG = strict ? gridInit(FOREIGN) : ((window.BV_DIP && window.BV_DIP.airGrid && window.BV_DIP.airGrid(ROUTE_SIDE, transitInit(), gridInit(FOREIGN))) || transitInit());      // strict — без транзитної смуги (колії, дороги); /* dip:air */
   const fx = q => gBlockedXY(FG, q[0], q[1]);
   const segOK = (A, B) => gClear(FG, A, B, false, false, 0, 0.8);
   let bad = false;
@@ -1455,6 +1457,7 @@ function stepUnit(u, sd){
     return;
   }
   place(u, sd);
+  if (u.kind === "c" && HOOKS.acCar) HOOKS.acCar(u, sd);      // aircombat:v1 — ухилення носія
 }
 /* atkreal:v1 */
 /* ---------- етап 7.63: реалізм атак (обидві сторони однаково) ----------
@@ -1514,7 +1517,8 @@ function impact(p, k, cls){ if (HOOKS.fx) return HOOKS.fx(p.slice(), k || "groun
 
 function spawnWeapon(key, variant, start, target, mode, wps, meta){
   const W = WEAPONS[key], lv = LVL[W.spd];
-  const base = avoidForeign(densify(buildRoute(start, target, mode, wps), 4));
+  ROUTE_SIDE = W.side; let base; try { base = avoidForeign(densify(buildRoute(start, target, mode, wps), 4)); } finally { ROUTE_SIDE = null; }      /* dip:air */
+  if (window.BV_DIP && window.BV_DIP.airUse) window.BV_DIP.airUse(W.side, base, W);      /* dip:airuse */
   let pts = W.cls === "ballistic" || W.cls === "hyper" ? base : weave(base, MAN[W.man]);   // балістичні й гіперзвукові — без маневрів перед ціллю
   if (pts !== base) pts = pts.map((p, i) => foreignAt(p) ? base[i] : p);                   // маневр не виводить за межі України та Росії
   const img = W.img.length > 1 ? (variant === "mix" ? pickOne(W.img) : W.img[variant | 0] || W.img[0]) : W.img[0];
@@ -3207,6 +3211,7 @@ const AD_TYPES = {
   mi28:     { n: "Мі-28Н", type: "Ударний вертоліт", side: "ru", air: true, heli: true, img: "mi28", mag: 150, reload: 30, p: [0.82, 0, 0, 0, 0, 0], r: 10, arc: 60, spd: "Висока", man: "Висока", fly: "Середня", mobile: true, gun: true, sz: 30, ammo: "снарядів" },
   ka52:     { n: "Ка-52", type: "Ударний вертоліт", side: "ru", air: true, heli: true, img: "ka52", mag: 150, reload: 28, p: [0.9, 0, 0, 0, 0, 0], r: 10, arc: 60, spd: "Висока", man: "Дуже висока", fly: "Середня", mobile: true, gun: true, sz: 30, ammo: "снарядів" },
   aew_saab340: { n: "Saab 340 AEW&C (ASC 890)", type: "Літак ДРЛО", side: "ua", air: true, aew: true, img: "aew", mag: 0, reload: 60, p: [0, 0, 0, 0, 0, 0], r: 0, spd: "Висока", man: "Низька", fly: "Середня", mobile: true, gun: false, sz: 30, ammo: "вильотів" },
+  aew_a50: { n: "А-50У (Шмель-М)", type: "Літак ДРЛО", side: "ru", air: true, aew: true, img: "aew_a50", mag: 0, reload: 90, p: [0, 0, 0, 0, 0, 0], r: 0, spd: "Середня", man: "Низька", fly: "Середня", mobile: true, gun: false, sz: 34, ammo: "вильотів" },
   /* ---- етап 6: наземне ППО Росії (збиває цілі України; морський дрон — ні); етап 7.19: + С-300В, С-350 «Витязь», 2К12 «Куб», «Стріла-2»,
      дрон-перехоплювач «Йолка», а Бук-М2 і Стріла-10 перейшли від України до Росії ---- */
   s500:     { side: "ru", n: "С-500 «Прометей»", type: "ПРО", mag: 2, reload: 43, p: [95, 90, 85, 80, 75, 70], r: 140, spd: "Надзвичайно висока", mobile: true, gun: false, sz: 36, ammo: "ракети" },
@@ -3826,11 +3831,23 @@ function fxLaunch(p, hdg){
   for (let i = 0; i < 5; i++) P({ tex: pickA(TEX.smoke), p: jitter(p, 0.05), v: dirV(back + rnd(-0.7, 0.7), rnd(0.1, 0.3)), tau: 1, wind: true,
     life: rnd(2400, 3400), s0: 0.12, s1: rnd(0.6, 0.9), m0: 5, m1: 17, a0: 0.4, pw: 1.2, fin: 0.08 });
 }
+/* aircombat:v1 — теплова пастка й диполі */
+function fxFlare(p){
+  buildTex();
+  fxFlash(p, 0.2, 0.07, 10, 5, 2800);
+  for (let i = 0; i < 2; i++) P({ tex: pickA(TEX.smoke), p: jitter(p, 0.04), v: dirV(rnd(0, 6.28), 0.05), tau: 1, wind: true, life: rnd(1600, 2400), s0: 0.06, s1: rnd(0.25, 0.4), m0: 5, m1: 12, a0: 0.3, pw: 1.2, fin: 0.1 });
+}
+function fxChaff(p){
+  buildTex();
+  for (let i = 0; i < 4; i++) P({ tex: pickA(TEX.smoke), p: jitter(p, 0.1), v: dirV(rnd(0, 6.28), 0.08), tau: 1.2, wind: true, life: rnd(2800, 4200), s0: 0.1, s1: rnd(0.45, 0.8), m0: 6, m1: 16, a0: 0.22, pw: 1.5, fin: 0.12 });
+}
 HOOKS.fx = (p, k, cls) => {
   if (k === "ship"){ fxGroundHit(p, "ship", false); fxAirKill(p, "ballistic"); return; }
   if (k === "kill") fxAirKill(p, cls);
   else if (k === "miss") fxMiss(p);
   else if (k === "crash") fxGroundHit(p, cls, true);
+  else if (k === "flare") fxFlare(p);
+  else if (k === "chaff") fxChaff(p);
   else fxGroundHit(p, cls, false);
 };
 /* етап 7.11: відокремлення бойових блоків МБР — спалах і димний слід корпусу, що падає */
@@ -4266,6 +4283,7 @@ function stepShots(sd){
   const now = performance.now();
   for (let i = ADS.shots.length - 1; i >= 0; i--){
     const s = ADS.shots[i];
+    if (s.ac) continue;      // aircombat:v1 — ракети повітряного бою веде BV_AIRC
     if (s.ctl){      // етап 7.22: керований дрон — дрібними кроками (рівне коло навіть при великому кроці симуляції)
       let left = sd, done = false;
       while (left > 1e-6 && !done){ const q = Math.min(0.05, left); left -= q; done = ctlDroneStep(s, q); }
@@ -4310,7 +4328,7 @@ function stepShots(sd){
    AIR_END — час польоту на крейсерській швидкості, с ігрового часу. Керування: BV_AIRX.flameout = false — літак без пального не гине, лише повертається */
 const AIRX = { acc: 2.4, dec: 1.8, abBurn: 3.2, heliBurn: 1.4, reserve: 0.2, abTurn: 0.3, flameout: true };
 window.BV_AIRX = AIRX;
-const AIR_END = { aew_saab340: 600, su27: 360, mig29: 240, su30: 420, su35: 360, f16: 330, mirage: 250, mi24: 420, mi8: 520, mi28: 480, ka52: 480 };
+const AIR_END = { aew_saab340: 600, aew_a50: 780, su27: 360, mig29: 240, su30: 420, su35: 360, f16: 330, mirage: 250, mi24: 420, mi8: 520, mi28: 480, ka52: 480 };
 const airEnd = u => AIR_END[u.key] || (AD_TYPES[u.key].heli ? 480 : 300);
 function airSpeed(u, T, want, sd){
   let v = u.sp; if (!(v > 0)) v = AIR.cruise * airK(T);
@@ -4490,6 +4508,7 @@ function airStep(u, T, sd, shotsBy){
       airRTB(u, u.mag > 0 || u.reserve > 0 ? "patrol" : "base"); return;
     }
   }
+  if (HOOKS.acBrain && HOOKS.acBrain(u, T, sd, shotsBy)) return;      // aircombat:v1 — повітряний бій (ухилення, переслідування, пуск)
   if (u.state === "transit"){
     // етап 7.4: літак не чекає точки патрулювання — по дорозі атакує цілі поруч і пускає ракети по тих, що в секторі
     if (u.mag > 0){
@@ -4626,7 +4645,518 @@ function adStep(sd){
     if (u.mag <= 0) adStartReload(u);
   }
   stepShots(sd);
+  HOOKS.acStep && HOOKS.acStep(sd);      // aircombat:v1
 }
+/* aircombat:v1 */
+/* ======================================================================
+   етап 7.70 — ПОВІТРЯНИЙ БІЙ (клей між 02j_aircombat.js і грою; опис — AIRCOMBAT.md)
+   • реєстр літаків: винищувачі/вертольоти ППО (ADS.units) і авіація-носії (units, kind «c») — висота, пастки, пошкодження;
+   • ППО проти літаків автоматично: ЗРК за картиною РЛС (мережа/туман) або власним радаром, захоплення → залп 1–2 ракет,
+     канали, висотне вікно, мінімальна дальність; зенітні гармати — по низьких цілях;
+   • винищувачі: пошук (бортова РЛС, ІЧ-пошук, ГЦН за картиною), переслідування, захоплення, пуск ракет за їхнім вікном (airPickW),
+     гармата в ближньому бою; під загрозою — маневр, пастки, повернення до бою;
+   • носії: самооборона (Су-34, МіГ-31К, Су-24) і ухилення зсувом з траси; низьковисотний прорив при опроміненні;
+   • ракети — повноцінні ADS.shots (малювання, мережа, туман — як у решти), крок — BV_AIRC.stepMissile;
+   • тепла пастка / диполі — частинки (HOOKS.fx kinds «flare», «chaff»), у гостя — через netEv.
+   Вимкнути: BV_ACG.on = false (або BV_AIRC.CFG.on = false). Гість (puppet) нічого не рахує.
+   ====================================================================== */
+const BAC = window.BV_AIRC;
+const AC = { on: true, ms: [], st: new Map(), ents: new Map(), clk: 0, sl: new Map(), fl: new Map(), specs: {}, tgt: new Map(), acc: 0, scan: 0,
+  stats: { ua: { kills: 0, lost: 0, shots: 0, decoyed: 0 }, ru: { kills: 0, lost: 0, shots: 0, decoyed: 0 } }, hintT: { ua: -9, ru: -9 },
+  W: { t: 0, flares: [], chaff: [], ent: null } };
+AC.W.ent = ref => { const e = AC.ents.get(ref); return e && e.alive ? e : null; };
+window.BV_ACG = AC;
+
+/* ЦІЛЕВКАЗАННЯ ВІД РЛС/ДРЛО (етап 7.71): ракета РЛ-типу (SARH/ARH) не залежить від бортового радара пускача —
+   якщо мережа РЛС або літак ДРЛО веде ворожий літак (acPic), винищувач пускає ракету на дальність САМОЇ РАКЕТИ (rng × k),
+   а на маршові ракету наводить мережа (src.link), доки ARH не ввімкне власну ГСН. Вимкнути: BV_ACG.cue.on = false. */
+AC.cue = { on: true, k: 0.9, offK: 1.35, jamK: 0.8 };
+const acClamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const acSd = u => u.side || "ua";
+function acSt(ref, key){ let s = AC.st.get(ref); if (!s){ s = BAC.newState(key); s.gun = (BAC.perfOf(key).gun ? 120 : 0); AC.st.set(ref, s); } return s; }
+function acHint(side, msg, gap){
+  if (AC.clk - AC.hintT[side] < (gap == null ? 2.5 : gap)) return;
+  AC.hintT[side] = AC.clk; HOOKS.adHint && HOOKS.adHint(side, msg);
+}
+const acJam = (sd, p) => EW.st.length ? 0.4 * ewE(other(sd), "RADAR", p) : 0;
+
+/* ---------- реєстр літаків ---------- */
+function acBuild(){
+  const M = AC.ents;
+  M.clear();
+  for (const a of ADS.units.values()){
+    const T = AD_TYPES[a.key]; if (!T || !T.air || a.state === "base" || a.state === "reload" || !a.pos) continue;
+    const ref = "f" + a.id, st = acSt(ref, a.key), q = radXY(a.pos);
+    M.set(ref, { ref, kind: "f", u: a, T, side: acSd(a), key: a.key, perf: BAC.perfOf(a.key), st, x: q.x, y: q.y, h: st.h, hdg: a.hdg || 0,
+      v: a.sp > 0 ? a.sp : AIR.cruise * airK(T), alive: true, heli: !!T.heli, aew: !!T.aew });
+  }
+  for (const u of units.values()){
+    if (u.kind !== "c" || u.fall || u.wait > 0 || !u.pos) continue;
+    const C = CARRIERS[u.key]; if (!C || C.kind !== "air") continue;
+    const ref = "c" + u.id, st = acSt(ref, u.key), q = radXY(u.pos);
+    if (st.def == null){ const pf = BAC.perfOf(u.key); st.def = pf.def ? pf.def[1] : 0; st.defId = pf.def ? pf.def[0] : null; }
+    M.set(ref, { ref, kind: "c", u, side: u.sd || "ru", key: u.key, perf: BAC.perfOf(u.key), st, x: q.x, y: q.y, h: st.h, hdg: u.hdg || 0, v: u.spd || 10, alive: true });
+  }
+  if (AC.st.size > M.size + 60){
+    const live = new Set(); for (const m of AC.ms) live.add(m.tgt);
+    for (const k of Array.from(AC.st.keys())) if (!M.has(k) && !live.has(k)) AC.st.delete(k);
+  }
+  for (const k of Array.from(AC.fl.keys())) if (!M.has(k)) AC.fl.delete(k);
+  for (const k of Array.from(AC.tgt.keys())) if (!M.has(k) || !M.has(AC.tgt.get(k))) AC.tgt.delete(k);
+  for (const k of Array.from(AC.sl.keys())) if (!ADS.units.has(k)) AC.sl.delete(k);
+  if (AC.ms.length){      // ракети, яких уже немає в ADS.shots (власника продано / гру скинуто), — не ведемо далі
+    const set = new Set(ADS.shots);
+    for (let i = AC.ms.length - 1; i >= 0; i--) if (!set.has(AC.ms[i])) AC.ms.splice(i, 1);
+  }
+}
+window.BV_ACH = ref => { const s = AC.st.get(ref); return s ? s.h : 0; };
+HOOKS.acH = ref => { const s = AC.st.get(ref); return s ? s.h : 0; };
+
+/* висота: профіль польоту + швидкість набору/зниження за типом */
+function acAltitude(e, sd){
+  const pf = e.perf, st = e.st, K = BAC.CFG.KS, dmg = st.hp < BAC.CFG.dmgBelow;
+  if (!(st.act && AC.clk - st.actT < 0.4 && !st.act.wait)){
+    let hT = pf.h;
+    if (e.kind === "c" && pf.rcs > 1 && AC.clk - (st.painted || -99) < 12) hT = Math.max(pf.low * 2, 600);      // опромінений носій іде на малу висоту
+    if (e.kind === "f" && st.hPt != null && AC.clk - st.hPt < 0.5) hT = st.hP;                                    // переслідування: висота цілі
+    st.hT = hT;
+  }
+  const cl = pf.cl * K * (dmg ? 0.6 : 1), dive = pf.cl * K * BAC.CFG.diveK;
+  st.h = acClamp(st.h + acClamp(st.hT - st.h, -dive * sd, cl * sd), 0, pf.ceil);
+  e.h = st.h;
+}
+
+/* ---------- виявлення ---------- */
+const acNeedPic = sd => fogLive() || !!(RAD.need && RAD.sim && RAD.net[sd] > 0);
+function acPic(sd, e){
+  const sim = RAD.sim; if (!sim) return null;
+  /* контакти: основна мережа веде літак за «a<id>»/id, станції ДРЛО (етап 8) — за «ad<id>»/«c<id>» */
+  const ks = e.kind === "f" ? ["a" + e.u.id, "ad" + e.u.id] : [e.u.id, "c" + e.u.id];
+  let c = null; for (const k of ks){ const x = RAD.lock.get(sd + ":" + k); if (x && (!c || x.conf > c.conf)) c = x; }
+  if (!c) return null;
+  const age = sim.t - c.lastUpdatedAt, rank = c.state === "identified" ? 4 : c.state === "tracking" ? 3 : 2;
+  return rank >= 3 && c.conf >= 0.45 && age <= Math.max(8, c.ttl * 0.6) ? c : null;      // для літаків поріг впевненості нижчий, ніж для ракет (великі цілі, далекі РЛС/ДРЛО)
+}
+/* якість треку цілі e для спостерігача (side sd, точка obs, радар R/pd) з урахуванням мережі РЛС */
+function acSees(sd, e, obs, R, pd){
+  const own = R > 0 ? BAC.trackQ(R, obs, e, { pd, jam: acJam(sd, e.u.pos) }) : 0, pic = acPic(sd, e);
+  const d = BAC.slant(obs, obs.h || 0, e, e.h);
+  if (acNeedPic(sd)) return pic || (d < 10 && own >= BAC.CFG.trackMin) ? Math.max(own, 0.6) : 0;
+  return Math.max(own, pic ? 0.6 : 0);
+}
+
+/* ---------- створення ракети (спільне для ЗРК, винищувачів і носіїв) ---------- */
+function acLaunch(m, key, aamId){
+  m.key = key; m.sd = m.side; m.pos = radLL(m.x, m.y); m.vmax = m.spec.v; m.p = 1; m.trail = [[m.pos[0], m.pos[1], performance.now()]]; m.tl = 0; m.seed = Math.random(); m.aam = aamId || null;
+  AC.ms.push(m); ADS.shots.push(m); AC.stats[m.side].shots++; ADS.dirty = true;
+}
+function acSamSpec(key, T){
+  let s = AC.specs[key]; if (s) return s;
+  const S = BAC.SAM[key], v = AD_SPD[T.spd] || 40;
+  s = AC.specs[key] = Object.assign({ n: T.n, burn: 0.55, tl: T.r * 1.7 / v + 7 }, S, { v });
+  return s;
+}
+function acInbound(ref, from){ let n = 0; for (const m of AC.ms) if (m.tgt === ref && !m.dead && (from == null || m.from === from)) n++; return n; }
+function acInboundSide(ref, side){ let n = 0; for (const m of AC.ms) if (m.tgt === ref && !m.dead && m.side === side) n++; return n; }
+
+/* ---------- ЗРК й зенітні гармати проти літаків ---------- */
+function acSams(){
+  const ents = Array.from(AC.ents.values()); if (!ents.length) return;
+  for (const u of ADS.units.values()){
+    const T = AD_TYPES[u.key]; if (!T || T.air || T.drone) continue;
+    const S = BAC.SAM[u.key], F = BAC.FLAK[u.key];
+    if (!S && !F) continue;
+    if (u.state === "move" || u.state === "reload" || u.mode === "manual" || !u.pos) continue;
+    if (u.mag <= 0) continue;
+    const side = acSd(u), q = radXY(u.pos);
+    let best = null, bs = Infinity;
+    for (const e of ents){
+      if (e.side === side || !e.alive || e.st.hp <= 0) continue;
+      if (S){
+        const env = BAC.samEnv(u.key, { x: q.x, y: q.y, h: 0, R: T.r }, e); if (!env.ok) continue;
+        const R = T.r * (S.pd ? 1.3 : 1.15), qual = acSees(side, e, { x: q.x, y: q.y, h: 20 }, R, S.pd);
+        if (qual < BAC.CFG.trackMin) continue;
+        const inb = acInboundSide(e.ref, side), cap = e.perf.hp >= 1.5 ? 3 : 2;
+        if (inb >= cap) continue;
+        if (acInbound(e.ref, u.id) >= BAC.samSalvo(u.key, u, e, 2)) continue;
+        const sc = env.d - qual * 5 - (e.kind === "c" ? 8 : 0);
+        if (sc < bs){ bs = sc; best = { e, env, qual }; }
+      } else {
+        const d = Math.hypot(e.x - q.x, e.y - q.y);
+        if (d > F.r || e.h > F.hmax) continue;
+        if (d < bs){ bs = d; best = { e, d }; }
+      }
+    }
+    if (!best) { AC.sl.delete(u.id); continue; }
+    const e = best.e;
+    if (F && !S){ acFlak(u, T, F, e, best.d); continue; }
+    const g = S.g, L = AC.sl.get(u.id);
+    if (g !== "ir" && g !== "sal") e.st.painted = AC.clk;
+    if (!L || L.ref !== e.ref || AC.clk - L.seen > 0.6){ AC.sl.set(u.id, { ref: e.ref, t0: AC.clk, seen: AC.clk }); continue; }
+    L.seen = AC.clk;
+    if (AC.clk - L.t0 < (BAC.CFG.lockT[g] || 1.5)) continue;
+    if (u.cool > 0) continue;
+    let live = 0; for (const m of AC.ms) if (m.from === u.id && !m.dead) live++;
+    if (live >= S.ch) continue;
+    acFireSam(u, T, S, e, q);
+  }
+}
+function acFireSam(u, T, S, e, q){
+  const spec = acSamSpec(u.key, T), side = acSd(u), v = spec.v;
+  const dx = e.x - q.x, dy = e.y - q.y, ttg = Math.hypot(dx, dy) / (v * 0.7), lx = e.x + Math.sin(e.hdg * D2R) * e.v * ttg, ly = e.y + Math.cos(e.hdg * D2R) * e.v * ttg;
+  const hdg = (Math.atan2(lx - q.x, ly - q.y) / D2R + 360) % 360, pos = u.pos;
+  const src = () => {
+    const a = ADS.units.get(u.id);
+    return { alive: !!a && a === u && a.state !== "move", x: q.x, y: q.y, h: 20, R: T.r * (S.pd ? 1.3 : 1.15), pd: S.pd, jam: acJam(side, pos), hdg: 0 };
+  };
+  const m = BAC.makeMissile(spec, { from: u.id, side, tgt: e.ref, x: q.x, y: q.y, h: 15, hdg, v0: v * 0.3, max: T.r * 1.6 + 15, tx: e.x, ty: e.y, th: e.h,
+    tvx: Math.sin(e.hdg * D2R) * e.v, tvy: Math.cos(e.hdg * D2R) * e.v, src, t0: AC.clk });
+  m.gamma = 50;
+  acLaunch(m, u.key, null);
+  u.mag--; u.fired++; ADS.fired++; u.cool = Math.max(u.cool, 0.9);
+  if (fogFxOk(u)) fxLaunch(pos, hdg);
+  if (u.mag <= 0) adStartReload(u);
+}
+function acFlak(u, T, F, e, d){
+  if (u.cool > 0 || AC.clk < (u.acfT || 0)) return;
+  u.acfT = AC.clk + 0.5;
+  const dt = 0.5, p = BAC.flakP(u.key, e, d, dt);
+  u.mag = Math.max(0, u.mag - 2); u.fired++; ADS.fired++;
+  const a = u.pos, rb = [e.u.pos[0] + (Math.random() - 0.5) * 0.02, e.u.pos[1] + (Math.random() - 0.5) * 0.02];
+  const rd = { from: u.id, key: u.key, tgt: 0, a: a.slice(), b: rb, d: Math.max(0.05, hav(a, rb)), s: 0, v: AD_SPD[T.spd] || 28, p: 0, hdg: brg(a, rb), color: "255,200,90" };
+  ADS.rounds.push(rd); HOOKS.onRound && HOOKS.onRound(rd);
+  if (fogFxOk(u)) fxMuzzle(a);
+  if (Math.random() < p){ acHit(e, { spec: { n: T.n, w: 0.25 + 0.5 * F.k, fz: 0.2 }, from: u.id, side: acSd(u), pk: 1 }, 0.05 + Math.random() * 0.1, true); }
+  if (u.mag <= 0) adStartReload(u);
+}
+
+/* ---------- винищувачі ---------- */
+function acOwnTrack(e, tgt, off){
+  const pf = e.perf;
+  return pf.rad > 0 && off <= pf.fov && BAC.trackQ(pf.rad, e, tgt, { pd: pf.pd, jam: acJam(e.side, tgt.u.pos) }) >= BAC.CFG.trackMin;
+}
+/* джерело наведення ракети: власний радар пускача, якщо він веде ціль; інакше — мережа РЛС/ДРЛО (лінія обміну) */
+function acMissileSrc(ref, tgtRef, side, S, pf){
+  return () => {
+    const c = AC.ents.get(ref), t = AC.ents.get(tgtRef), live = !!c && c.alive;
+    if (live && t && t.alive && pf.rad > 0){
+      const off = Math.abs(BAC.util.dA(c.hdg, BAC.util.brg(c, t)));
+      if (off <= pf.fov && BAC.trackQ(pf.rad, c, t, { pd: pf.pd, jam: acJam(c.side, t.u.pos) }) >= BAC.CFG.trackMin)
+        return { alive: true, x: c.x, y: c.y, h: c.h, R: pf.rad, pd: pf.pd, jam: acJam(c.side, t.u.pos), hdg: c.hdg, beam: S.g === "sarh" ? pf.fov : undefined };
+    }
+    if (AC.cue.on && t && t.alive){
+      const p = acPic(side, t);
+      if (p) return { alive: true, link: true, q: acClamp(p.conf, 0, 1) * (1 - Math.min(AC.cue.jamK, acJam(side, t.u.pos))), x: t.x, y: t.y, h: t.h };
+    }
+    return live ? { alive: true, x: c.x, y: c.y, h: c.h, R: pf.rad, pd: pf.pd, jam: acJam(c.side, t ? t.u.pos : null), hdg: c.hdg, beam: S.g === "sarh" ? pf.fov : undefined } : { alive: false };
+  };
+}
+/* вибір ракети; побічно виставляє AC.cued = true, якщо пуск іде по цілевказанню мережі (власний радар ціль не веде) */
+function acAamOf(u, T, e, tgt, d3){
+  AC.cued = false;
+  const ld = u.ld; if (!ld) return null;
+  const ids = Object.keys(ld).filter(k => ld[k] > 0 && AIR_WPN[k] && BAC.AAM[k]); if (!ids.length) return null;
+  const off = Math.abs(BAC.util.dA(e.hdg, BAC.util.brg(e, tgt))), pf = e.perf;
+  const pic = AC.cue.on ? acPic(e.side, tgt) : null, own = acOwnTrack(e, tgt, off);
+  const ok = [], cuedK = {};
+  for (const k of ids){
+    const S = BAC.AAM[k], f = T.r > 0 ? d3 / T.r : 0, rf = S.g === "sarh" || S.g === "arh";
+    const viaNet = rf && !!pic;                                                           // РЛ-ракета + мережа веде ціль → дальність визначає сама ракета
+    const inRange = viaNet ? d3 <= S.rng * AC.cue.k : f <= AIR_WPN[k].rk[1];
+    if (!inRange || d3 < S.rmin || tgt.h < S.hmin || tgt.h > S.hmax || off > S.off * (viaNet ? AC.cue.offK : 1)) continue;
+    if (S.g === "ir"){
+      const reach = S.acq * Math.sqrt(BAC.irIntensity(tgt, e)) * 1.6; if (d3 > reach * 2.2) continue;
+    } else if (!own && !viaNet) continue;                                                // SARH/ARH: свій радар або мережа
+    ok.push(k); cuedK[k] = viaNet && !own;
+  }
+  if (!ok.length) return null;
+  const pick = airPickW(u, T, d3);
+  let w = ok.includes(pick) ? pick : null;
+  if (!w){
+    const net = ok.filter(k => cuedK[k]);
+    if (net.length){                                                                       // найкоротша ракета, що дістає із запасом (економимо далекобійні)
+      net.sort((a, b) => BAC.AAM[a].rng - BAC.AAM[b].rng);
+      w = net.find(k => d3 <= BAC.AAM[k].rng * 0.75) || net[net.length - 1];
+    } else w = ok.sort((a, b) => Math.abs(d3 / T.r - (AIR_WPN[a].rk[0] + AIR_WPN[a].rk[1]) / 2) - Math.abs(d3 / T.r - (AIR_WPN[b].rk[0] + AIR_WPN[b].rk[1]) / 2))[0];
+  }
+  AC.cued = !!cuedK[w];
+  return w;
+}
+/* вибір цілі винищувача (раз на AC.scan): виявлена ворожа авіація в радіусі переслідування */
+function acPickTarget(e){
+  const u = e.u, T = e.T, pf = e.perf, side = e.side;
+  if (u.mode === "manual" || u.state === "base" || u.state === "reload") return null;
+  const reach = Math.max(airReach(u, T) * 1.15, 30);
+  let cueReach = 0;                                                                         // найдальша РЛ-ракета на борту (цілевказання від мережі)
+  if (AC.cue.on && u.ld) for (const k of Object.keys(u.ld)){ const S = u.ld[k] > 0 && BAC.AAM[k]; if (S && (S.g === "sarh" || S.g === "arh")) cueReach = Math.max(cueReach, S.rng * AC.cue.k); }
+  let best = null, bs = Infinity;
+  for (const x of AC.ents.values()){
+    if (x.side === side || !x.alive || x.st.hp <= 0) continue;
+    const d = BAC.slant(e, e.h, x, x.h), pic = acPic(side, x);
+    if (d > (pic && cueReach ? Math.max(reach * 1.4, cueReach) : reach * 1.4)) continue;
+    const off = Math.abs(BAC.util.dA(e.hdg, BAC.util.brg(e, x)));
+    let q = pf.rad > 0 && off <= pf.fov ? BAC.trackQ(pf.rad, e, x, { pd: pf.pd, jam: acJam(side, x.u.pos) }) : 0;
+    if (pf.irst > 0) q = Math.max(q, BAC.irstQ(pf.irst, e, x) * (off <= 90 ? 1 : 0.6));
+    if (d < 8) q = Math.max(q, 0.6);                                                     // візуально
+    if (acNeedPic(side)){ if (!pic && !(d < 10 && q >= BAC.CFG.trackMin)) continue; q = Math.max(q, 0.6); }
+    else q = Math.max(q, pic ? 0.6 : 0);
+    if (q < BAC.CFG.trackMin) continue;
+    if (u.state === "patrol" && u.patrol && hav(x.u.pos, u.patrol) > AIR.leash + 45) continue;
+    const inb = acInboundSide(x.ref, side);
+    let sc = d + inb * 25 - (x.kind === "c" ? 20 : x.aew ? 28 : 0) + off * 0.1;
+    if (x.heli && !x.u.pos) continue;
+    if (x.ref === (AC.tgt.get(e.ref) || "")) sc -= 15;
+    if (sc < bs){ bs = sc; best = x; }
+  }
+  return best;
+}
+function acFighterFire(e, tgt, sd){
+  const u = e.u, T = e.T, st = e.st;
+  if (u.cool > 0) return;
+  const d3 = BAC.slant(e, e.h, tgt, tgt.h), L = AC.fl.get(e.ref);
+  const wid = acAamOf(u, T, e, tgt, d3);
+  if (wid){
+    const S = BAC.AAM[wid], cap = S.g === "ir" ? 1 : 2;
+    if (acInbound(tgt.ref, "f" + u.id) >= cap) return;
+    if (!L || L.ref !== tgt.ref || AC.clk - L.seen > 0.5){ AC.fl.set(e.ref, { ref: tgt.ref, t0: AC.clk, seen: AC.clk }); return; }
+    L.seen = AC.clk;
+    const cued = AC.cued;
+    if (S.g !== "ir" && !cued) tgt.st.painted = AC.clk;                                    // по цілевказанню бортовий радар ціль не опромінює
+    if (AC.clk - L.t0 < (BAC.CFG.lockT[S.g] || 1.2)) return;
+    AC.fl.delete(e.ref);
+    const spec = Object.assign({}, S, { burn: S.burn });
+    const maxp = Math.max(T.r * AIR_WPN[wid].rk[1] * 1.5 + 10, S.rng ? S.rng * 0.9 : 0);
+    const lead = Math.hypot(tgt.x - e.x, tgt.y - e.y) / (S.v * 0.7), lx = tgt.x + Math.sin(tgt.hdg * D2R) * tgt.v * lead, ly = tgt.y + Math.cos(tgt.hdg * D2R) * tgt.v * lead;
+    const hdg = (Math.atan2(lx - e.x, ly - e.y) / D2R + 360) % 360;
+    const ref = e.ref, pf = e.perf;
+    const src = acMissileSrc(ref, tgt.ref, e.side, S, pf);
+    const m = BAC.makeMissile(spec, { from: u.id, side: e.side, tgt: tgt.ref, x: e.x, y: e.y, h: e.h, hdg, v0: Math.max(e.v, S.v * 0.45), max: maxp, tx: tgt.x, ty: tgt.y, th: tgt.h,
+      tvx: Math.sin(tgt.hdg * D2R) * tgt.v, tvy: Math.cos(tgt.hdg * D2R) * tgt.v, src, pk: AIR_WPN[wid].pk, t0: AC.clk });
+    if (S.g === "ir") m.active = true;
+    if (cued){ m.cued = true; AC.stats[e.side].cued = (AC.stats[e.side].cued || 0) + 1; acHint(e.side, `${T.n}: ${S.n} — наведення від РЛС/ДРЛО, ${Math.round(d3)} км`, 1.5); }
+    acLaunch(m, u.key, wid);
+    u.mag--; u.fired++; ADS.fired++; u.ld[wid]--; u.cool += AIR.rof * 3;
+    if (fogFxOk(u)) fxMuzzle(u.pos);
+    return;
+  }
+  /* гармата: лише в ближньому бою, ціль у вузькому конусі попереду */
+  if (st.gun > 0 && e.perf.gun && !e.heli){
+    const off = Math.abs(BAC.util.dA(e.hdg, BAC.util.brg(e, tgt)));
+    if (d3 <= 1.6 && off <= 9 && Math.abs(e.h - tgt.h) <= 800 && AC.clk >= (st.gunT || 0)){
+      st.gunT = AC.clk + 0.5; st.gun -= 12; u.cool += 0.2;
+      const a = u.pos, rb = tgt.u.pos.slice();
+      const rd = { from: u.id, key: u.key, tgt: 0, a: a.slice(), b: rb, d: Math.max(0.05, hav(a, rb)), s: 0, v: 20, p: 0, hdg: brg(a, rb), color: "255,214,120" };
+      ADS.rounds.push(rd); HOOKS.onRound && HOOKS.onRound(rd);
+      if (fogFxOk(u)) fxMuzzle(a);
+      const p = BAC.flakP("jet", tgt, d3, 0.5);
+      if (Math.random() < p) acHit(tgt, { spec: { n: "гармата", w: 0.35, fz: 0.2 }, from: u.id, side: e.side, pk: 1 }, 0.05, true);
+    }
+  }
+}
+/* викликається з airStep (патруль / транзит / повернення): повертає true, якщо літак керується повітряним боєм у цей кадр */
+HOOKS.acBrain = function(u, T, sd, shotsBy){
+  if (!AC.on || !BAC.CFG.on || GAME.puppet) return false;
+  const ref = "f" + u.id, e = AC.ents.get(ref); if (!e) return false;
+  if (HOOKS.holdCourse && HOOKS.holdCourse(u)) return false;      // гравець веде літак сам — курс не перехоплюємо (пастки викидаються автоматично)
+  const st = e.st;
+  if (st.hp < BAC.CFG.dmgBelow && !u.acDmg){
+    u.acDmg = true; acHint(e.side, `${T.n}: пошкоджено — повертається на аеродром`, 0);
+    airRTB(u, "base"); return false;
+  }
+  const act = st.act && AC.clk - st.actT < 0.35 && !st.act.wait ? st.act : null;
+  if (act){                                                       // ухилення від ракети
+    u.cool = Math.max(0, u.cool - sd);
+    turnTo(u, act.hdg, sd, BAC.CFG.evK * act.turn * Math.min(1, e.perf.g / 9) * 1.2);
+    st.ab = true;
+    const spd = airSpeed(u, T, AIR.chase * airK(T) * (act.v || 1), sd) * sd, a = u.hdg * D2R, nxt = offKm(u.pos, Math.sin(a) * spd, Math.cos(a) * spd);
+    if (airOK(u.side, nxt)) u.pos = nxt;
+    return true;
+  }
+  st.ab = (u.sp || 0) > AIR.cruise * airK(T) * 1.05;
+  if (u.state !== "patrol" && u.state !== "transit") return false;
+  if (u.mag <= 0 && !(st.gun > 0)) return false;
+  const tgt = AC.tgt.has(ref) ? AC.ents.get(AC.tgt.get(ref)) : null;
+  if (!tgt || !tgt.alive) return false;
+  /* переслідування: ніс на точку зустрічі, висота цілі */
+  const d = Math.hypot(tgt.x - e.x, tgt.y - e.y), ttg = d / (AIR.chase * airK(T) + 1e-6);
+  const lx = tgt.x + Math.sin(tgt.hdg * D2R) * tgt.v * Math.min(ttg, 6), ly = tgt.y + Math.cos(tgt.hdg * D2R) * tgt.v * Math.min(ttg, 6);
+  const want = (Math.atan2(lx - e.x, ly - e.y) / D2R + 360) % 360;
+  turnTo(u, want, sd, AIR.aim / AIR.turn);
+  st.hP = acClamp(tgt.h, e.perf.low, e.perf.ceil); st.hPt = AC.clk;
+  const spd = airSpeed(u, T, AIR.chase * airK(T), sd) * sd, a = u.hdg * D2R, nxt = offKm(u.pos, Math.sin(a) * spd, Math.cos(a) * spd);
+  if (airOK(u.side, nxt) && (u.state === "transit" || u.atk || hav(nxt, u.patrol) <= AIR.leash + 25)) u.pos = nxt;
+  u.cool = Math.max(0, u.cool - sd);      // airStep тут завершується раніше — перезарядку зменшуємо самі
+  acFighterFire(e, tgt, sd);
+  if (u.state === "transit") u.div = true;
+  return true;
+};
+
+/* ---------- носії ---------- */
+function acCarrierDefense(e){
+  const st = e.st; if (!(st.def > 0) || !st.defId) return;
+  const S = BAC.AAM[st.defId], pf = e.perf; if (!S || AC.clk < (st.defT || 0)) return;
+  if (st.act && AC.clk - st.actT < 1.2) return;                 // зайнятий ухиленням
+  let best = null, bd = Infinity;
+  for (const x of AC.ents.values()){
+    if (x.side === e.side || x.kind !== "f" || x.heli || !x.alive) continue;
+    const d = BAC.slant(e, e.h, x, x.h); if (d > S.rng || d < S.rmin || x.h < S.hmin || x.h > S.hmax) continue;
+    const off = Math.abs(BAC.util.dA(e.hdg, BAC.util.brg(e, x))); if (off > S.off) continue;
+    const q = Math.max(pf.rad > 0 ? BAC.trackQ(pf.rad, e, x, { pd: pf.pd, jam: acJam(e.side, x.u.pos) }) : 0, d < 9 ? 0.6 : 0, acPic(e.side, x) ? 0.6 : 0);
+    if (q < BAC.CFG.trackMin) continue;
+    if (S.g === "sarh" && !(pf.rad > 0 && off <= pf.fov)) continue;
+    if (acInbound(x.ref, e.ref) >= 1) continue;
+    if (d < bd){ bd = d; best = x; }
+  }
+  if (!best){ AC.fl.delete(e.ref); return; }
+  const L = AC.fl.get(e.ref);
+  if (!L || L.ref !== best.ref || AC.clk - L.seen > 0.5){ AC.fl.set(e.ref, { ref: best.ref, t0: AC.clk, seen: AC.clk }); return; }
+  L.seen = AC.clk; if (S.g !== "ir") best.st.painted = AC.clk;
+  if (AC.clk - L.t0 < (BAC.CFG.lockT[S.g] || 1.2)) return;
+  AC.fl.delete(e.ref); st.defT = AC.clk + 1.4; st.def--;
+  const lead = Math.hypot(best.x - e.x, best.y - e.y) / (S.v * 0.7), lx = best.x + Math.sin(best.hdg * D2R) * best.v * lead, ly = best.y + Math.cos(best.hdg * D2R) * best.v * lead;
+  const hdg = (Math.atan2(lx - e.x, ly - e.y) / D2R + 360) % 360, ref = e.ref, spec = Object.assign({}, S);
+  const src = () => { const c = AC.ents.get(ref); if (!c || !c.alive) return { alive: false };
+    return { alive: true, x: c.x, y: c.y, h: c.h, R: pf.rad, pd: pf.pd, jam: acJam(c.side, best.u.pos), hdg: c.hdg, beam: S.g === "sarh" ? pf.fov : undefined }; };
+  const m = BAC.makeMissile(spec, { from: ref, side: e.side, tgt: best.ref, x: e.x, y: e.y, h: e.h, hdg, v0: Math.max(e.v, S.v * 0.45), max: S.rng * 1.4 + 10, tx: best.x, ty: best.y, th: best.h,
+    tvx: Math.sin(best.hdg * D2R) * best.v, tvy: Math.cos(best.hdg * D2R) * best.v, src, t0: AC.clk });
+  if (S.g === "ir") m.active = true;
+  acLaunch(m, e.key, st.defId in AIR_WPN ? st.defId : null);
+  acHint(e.side, `${CARRIERS[e.key].n}: пуск ${S.n} по ${AD_TYPES[best.key] ? AD_TYPES[best.key].n : "винищувачу"}`, 1);
+}
+/* зсув з траси при ухиленні: викликається з stepUnit після place() */
+HOOKS.acCar = function(u, sd){
+  if (!AC.on || !BAC.CFG.on || GAME.puppet || u.fall) return;
+  const st = AC.st.get("c" + u.id); if (!st) return;
+  const pf = BAC.perfOf(u.key), base = u.hdg;
+  const act = st.act && AC.clk - st.actT < 0.35 && !st.act.wait ? st.act : null;
+  let want = 0;
+  if (act) want = acClamp(BAC.util.dA(base, act.hdg), -80, 80);
+  else if (Math.abs(st.off || 0) > 0.15) want = acClamp(-(st.off || 0) * 10, -45, 45);
+  const w = 55 * BAC.CFG.evK * Math.min(1, pf.g / 9) * (act ? act.turn : 0.6) * sd;
+  st.phi = (st.phi || 0) + acClamp(want - (st.phi || 0), -w, w);
+  if (!act && Math.abs(st.off || 0) <= 0.15 && Math.abs(st.phi) < 1){ st.phi = 0; st.off = 0; return; }
+  st.off = acClamp((st.off || 0) + (u.spd || 8) * Math.sin(st.phi * D2R) * sd, -9, 9);
+  const perp = (base + 90) * D2R;
+  u.pos = offKm(u.pos, Math.sin(perp) * st.off, Math.cos(perp) * st.off);
+  u.hdg = (base + st.phi + 360) % 360;
+};
+
+/* ---------- ураження й втрати ---------- */
+function acHit(e, m, miss, gun){
+  if (!e.alive || e.st.hp <= 0) return;
+  const r = BAC.warhead(m, e, miss);
+  const pos = e.u.pos, tn = e.kind === "c" ? CARRIERS[e.key].n : AD_TYPES[e.key].n;
+  if (r.killed){ acKill(e, m, tn); return; }
+  if (!gun) fxHitSpark(pos);
+  if (r.damaged){
+    if (e.kind === "c" && !e.st.dmgDone){ e.st.dmgDone = true; e.u.spd *= 0.8; }
+    if (e.kind === "f" && !e.u.acDmg && e.u.state !== "rtb"){ e.u.acDmg = true; airRTB(e.u, e.aew && e.u.reserve > 0 ? "patrol" : "base"); }      // ДРЛО (aewStep) сам не бачить ушкоджень — повертаємо його тут
+    acHint(e.side, `${tn}: потрапляння ${m.spec.n} — літак пошкоджено`, 0);
+  } else if (!gun) acHint(e.side, `${tn}: осколки ${m.spec.n} — літак цілий`, 4);
+}
+function acKill(e, m, tn){
+  e.alive = false;
+  const shooter = ADS.units.get(m.from) || null, sdK = m.side, sdV = e.side;
+  AC.stats[sdK].kills++; AC.stats[sdV].lost++;
+  if (shooter) shooter.kills = (shooter.kills | 0) + 1;
+  if (e.kind === "f"){
+    const a = e.u; ADS.units.delete(a.id); ADS.dirty = true;
+    impact(a.pos, "kill", "jet");
+    AC.st.delete(e.ref); AC.tgt.delete(e.ref);
+  } else {
+    const t = e.u;
+    if (!units.has(t.id) || t.fall) return;
+    HOOKS.onDown && HOOKS.onDown(t, shooter || { side: sdK });
+    t.fall = { t: 0, dur: rnd(2.2, 4.4), w: (Math.random() < 0.5 ? -1 : 1) * rnd(240, 660), v0: Math.max(1.2, t.spd * 0.55), dir: t.hdg };
+    t.onEnd = null; fxFall(t); ADS.dirty = true;
+  }
+  if (e.kind === "f" && GAME.on && !GAME.puppet && GAME.phase === "run"){
+    const S = GAME.st[sdK]; if (S){ S.downed++; S.pts += 12; S.ptsDef += 12; }
+    if (GAME.st[sdV]) GAME.st[sdV].lost++;
+  }
+  HOOKS.adHint && HOOKS.adHint(sdV, `${tn}: збито ракетою ${m.spec.n} — ${e.aew ? "ДРЛО втрачено" : "літак втрачено"}`);
+  if (sdK !== sdV) HOOKS.adHint && HOOKS.adHint(sdK, `${tn} (${SIDE_N[sdV]}) збито — ${m.spec.n}`);
+}
+function acEndShot(m, hit){
+  const i = AC.ms.indexOf(m); if (i >= 0) AC.ms.splice(i, 1);
+  const j = ADS.shots.indexOf(m); if (j >= 0) ADS.shots.splice(j, 1);
+  if (m.trail && m.trail.length) FX.trails.push({ pts: m.trail.concat([[m.pos[0], m.pos[1], performance.now()]]), sd: m.sd });
+  if (!hit) impact(m.pos, "miss");
+}
+function acMissileEvent(m, ev){
+  const e = ev.ent;
+  if (ev.k === "burst" && e){
+    acEndShot(m, true); acHit(e, m, ev.miss, false);
+    if (e.alive) impact(m.pos, "miss");
+    return;
+  }
+  acEndShot(m, false);
+  if (ev.k === "decoy" && e){
+    AC.stats[e.side].decoyed++;
+    acHint(e.side, `${e.kind === "c" ? CARRIERS[e.key].n : AD_TYPES[e.key].n}: ракету ${m.spec.n} відведено ${m.spec.g === "ir" || m.spec.g === "sal" ? "тепловою пасткою" : "диполями"}`, 2);
+  } else if (ev.k === "lost" && e){
+    acHint(e.side, `${e.kind === "c" ? CARRIERS[e.key].n : AD_TYPES[e.key].n}: ракета ${m.spec.n} втратила захоплення`, 3);
+  }
+}
+
+/* ---------- ухилення та пастки ---------- */
+function acDefense(e){
+  const st = e.st;
+  const thr = [];
+  for (const m of AC.ms) if (m.tgt === e.ref && !m.dead && m.lock.mode !== "lost") thr.push({ m, d: BAC.slant(m, m.h, e, e.h) });
+  const act = BAC.defend(e, thr, AC.W);
+  if (act){ st.act = act; st.actT = AC.clk; if (!act.wait) st.hT = act.h; } else if (st.act && AC.clk - st.actT > 0.35) st.act = null;
+  if (act && act.cm){
+    for (const k of act.cm){
+      const r = BAC.dispense(AC.W, e, k);
+      if (r) HOOKS.fx && HOOKS.fx(radLL(e.x, e.y), r === "flare" ? "flare" : "chaff", "jet");
+    }
+  }
+  if (st.painted != null && AC.clk - st.painted < 1.2 && e.perf.ecm > 0) st.ecm = true;
+  else if (!act) st.ecm = false;
+}
+
+/* ---------- головний крок ---------- */
+HOOKS.acStep = function(sd){
+  if (!AC.on || !BAC.CFG.on || GAME.puppet || !(sd > 0)) return;
+  if (!ADS.units.size && !AC.ms.length) { AC.clk += sd; return; }
+  const n = Math.max(1, Math.ceil(sd / 0.1)), dtc = sd / n;
+  acBuild();
+  for (let k = 0; k < n; k++){
+    AC.clk += dtc; AC.W.t = AC.clk;
+    if (!AC.ents.size && !AC.ms.length) continue;
+    for (const e of AC.ents.values()) acAltitude(e, dtc);
+    /* оновити висоти й побудувати цілі наступного кадру */
+    AC.scan -= dtc;
+    if (AC.scan <= 0){
+      AC.scan = 0.25;
+      for (const e of AC.ents.values()){
+        if (e.kind !== "f" || e.heli || e.aew){ if (e.kind === "f") AC.tgt.delete(e.ref); continue; }      // ДРЛО й вертольоти літаки не переслідують
+        const t = acPickTarget(e);
+        if (t) AC.tgt.set(e.ref, t.ref); else AC.tgt.delete(e.ref);
+      }
+      acSams();
+      for (const e of AC.ents.values()) if (e.kind === "c") acCarrierDefense(e);
+    }
+    for (const e of AC.ents.values()) acDefense(e);
+    /* ракети: крок у просторі, цілі пересуваються разом із кроком */
+    BAC.stepDecoys(AC.W, dtc);
+    for (let i = AC.ms.length - 1; i >= 0; i--){
+      const m = AC.ms[i]; if (!m) continue;
+      const ev = BAC.stepMissile(m, dtc, AC.W);
+      m.pos = radLL(m.x, m.y);
+      if (m.hdg != null) m.tl += dtc;
+      if (m.tl >= 0.045){ m.tl = 0; m.trail.push([m.pos[0], m.pos[1], performance.now()]); if (m.trail.length > 80) m.trail.shift(); }
+      if (ev) acMissileEvent(m, ev);
+    }
+    for (const e of AC.ents.values()){ e.x += Math.sin(e.hdg * D2R) * e.v * dtc; e.y += Math.cos(e.hdg * D2R) * e.v * dtc; }
+  }
+};
+HOOKS.acInit = function(){
+  AC.ms.length = 0; AC.st.clear(); AC.ents.clear(); AC.sl.clear(); AC.fl.clear(); AC.tgt.clear(); AC.W.flares.length = 0; AC.W.chaff.length = 0; AC.clk = 0; AC.scan = 0;
+  for (const s of ["ua", "ru"]) AC.stats[s] = { kills: 0, lost: 0, shots: 0, decoyed: 0 };
+};
+/* aircombat:end */
 
 /* ======================================================================
    UI
@@ -4645,6 +5175,141 @@ function initStage4(map, maplibregl){
   const canPlaceSide = (side, p) => side === "ru" ? (inRussiaGrid(p) || inOccupiedUA(p)) && !canPlaceAD(p) && !foreignAt(p) : canPlaceAD(p);
   const placeMsg = side => side === "ru" ? "ППО Росії можна розмістити лише на території Росії або на окупованій території." : "ППО можна розмістити лише на підконтрольній Україні території.";
   window.BV_AP = AP;
+  /* bv-dnd-glue */
+/* SKYDOMINION · 174 · клей Drag & Drop ↔ гра (етапи 1 і 5)
+   Підключається всередині замикання гри (див. tools/apply_group.py). Нової ігрової логіки немає:
+   кожна дія викликає ту саму функцію, що й звичайна панель, а перевірки — ті самі.
+   Підтримувані картки (кроме ударів по противнику):
+     ad  — наземна ППО (#adp · data-ad=key) → HOOKS.adCmd("place")
+     rad — РЛС (#adp · data-ad=radpick)     → radarAdd (як клік по мапі в режимі вибору)
+     ew  — РЕБ (#adp · data-ad=ewpick)      → ewAdd
+     air — авіація ППО (#adp · .wcard akey) → HOOKS.adCmd("takeoff"): злітає з найближчого свого
+           аеродрому, точка скидання — патрульна точка (ті самі правила, що в панелі).
+   Не підтримуються: ракети (удари), мобільні ПУ балістики, кораблі ППО — лишаються кліком. */
+(function () {
+  "use strict";
+  const ap = () => window.BV_AP || null;
+  const side = T => (T && T.side) || "ua";
+  const types = () => (typeof AD_TYPES !== "undefined" ? AD_TYPES : null);
+  const typeOf = key => { const T = types(); return T ? T[key] || null : null; };
+  const sideAt = () => { const A = ap(); return (A && A.post && A.post.side) || "ua"; };
+  const landOK = (sd, p) => (sd === "ru" ? !!ruLand(p) : !!canPlaceAD(p));
+  const sitesOf = sd => (window.BV_SITES || []).filter(s => (sd === "ru" ? s.t === "fighter" : s.t === "ua_air") && !s.off);
+  const dkm = (a, b) => { const kx = 111.32 * Math.cos(a[1] * Math.PI / 180); return Math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * 110.574); };
+  function nearestSite(sd, p){ let best = null, bd = Infinity; for (const s of sitesOf(sd)){ const d = dkm(s.c, p); if (d < bd){ bd = d; best = s; } } return best ? { s: best, d: bd } : null; }
+  function ammoFor(key, T){
+    const A = ap();
+    if (A && A.aammoInf && A.akey === key) return "inf";
+    if (A && A.akey === key && (A.aammo | 0) > 0) return Math.max(1, A.aammo | 0);
+    return Math.max(1, (T.mag || 1) * 3);
+  }
+  const say = m => { if (window.BV_DND_HOST && window.BV_DND_HOST.toast) window.BV_DND_HOST.toast(m); };
+  const bad = msg => ({ ok: false, state: "bad", msg });
+  const ewOwn = (sd, key) => typeof EW_STR === "undefined" || !EW_STR[sd] || EW_STR[sd].includes(key);   // станція — лише своєї сторони
+
+  const dndAp = {
+    zone(kind, key){
+      try {
+        if (kind === "ad"){ const T = typeOf(key); return T && !T.ship ? (p => !!HOOKS.canPlaceSide(T.side, p)) : null; }
+        if (kind === "rad"){ const u = radBV().BYID[key]; return u ? (p => landOK(u.side, p)) : null; }
+        if (kind === "ew"){ const sd = sideAt(); return EWSYS[key] ? (p => landOK(sd, p)) : null; }
+        if (kind === "air"){ const T = typeOf(key); return T && !T.ship ? (p => typeof patrolOK === "function" ? !!patrolOK(side(T), p) : true) : null; }
+      } catch (_) {}
+      return null;
+    },
+
+    probe(kind, key, p){
+      try {
+        if (kind === "ad"){
+          const T = typeOf(key); if (!T) return bad("Ця картка на мапу не ставиться");
+          if (T.ship) return bad("Кораблі ППО ставляться з військового порту");
+          const A = ap(); if (!A || !A.post) return bad("Спершу оберіть командний пункт");
+          if (!HOOKS.canPlaceSide(T.side, p)) return bad(T.side === "ru" ? "ППО Росії — лише на її території або окупованій" : "ППО можна розмістити лише на підконтрольній Україні території");
+          return { ok: true, state: "ok", label: `${T.n} · радіус ${String(T.r).replace(".", ",")} км`, ring: T.r };
+        }
+        if (kind === "rad"){
+          const u = radBV().BYID[key]; if (!u) return bad("Невідома РЛС");
+          if (!landOK(u.side, p)) return bad(u.side === "ru" ? "РЛС Росії — лише на її території або окупованій" : "РЛС можна розгорнути лише на підконтрольній Україні території");
+          return { ok: true, state: "ok", label: `${u.name} · розгортання` };
+        }
+        if (kind === "ew"){
+          const E = EWSYS[key]; if (!E) return bad("Невідома станція РЕБ");
+          const sd = sideAt();
+          if (!ewOwn(sd, key)) return bad("Ця станція РЕБ — іншої сторони");
+          if (!landOK(sd, p)) return bad(sd === "ru" ? "РЕБ Росії — лише на її території або окупованій" : "РЕБ можна розгорнути лише на підконтрольній Україні території");
+          return { ok: true, state: "ok", label: `${E.n} · розгортання ${E.rdy} с` };
+        }
+        if (kind === "air"){
+          const T = typeOf(key); if (!T || T.ship) return bad("Ця система не злітає з мапи");
+          const sd = side(T);
+          if (typeof patrolOK === "function" && !patrolOK(sd, p)) return bad("Патрульна точка — лише над своєю територією або водами, поза запретною зоною");
+          const n = nearestSite(sd, p); if (!n) return bad("Немає свого аеродрому");
+          return { ok: true, state: "ok", label: `${T.n} → патрулювання · з «${n.s.n}» ≈ ${Math.round(n.d)} км`, ring: 0, from: n.s.c };
+        }
+      } catch (e) { return bad("Не вдалося перевірити точку"); }
+      return bad("Ця картка на мапу не ставиться");
+    },
+
+    apply(kind, key, p){
+      try {
+        if (kind === "ad"){
+          const T = typeOf(key), A = ap();
+          if (!T || !A || !A.post) return false;
+          if (HOOKS.bcLock && HOOKS.bcLock("a", key)) return false;
+          const ok = HOOKS.adCmd("place", { key, pos: p.slice(), ammo: ammoFor(key, T), post: A.post.n });
+          if (!ok){ say("Розміщення відхилено: перевірте склад і правила"); return false; }
+          say(`${T.n} розміщено · радіус ${String(T.r).replace(".", ",")} км`);
+          if (HOOKS.apRender) HOOKS.apRender();
+          return true;
+        }
+        if (kind === "rad"){
+          const u = radBV().BYID[key]; if (!u) return false;
+          const st = radarAdd(key, p.slice(), u.side, false);
+          if (!st){ say("РЛС не розгорнуто: місце або ліміт станцій"); return false; }
+          say(`${u.name} розгортається`);
+          if (typeof radarPanel === "function") radarPanel();
+          return true;
+        }
+        if (kind === "ew"){
+          const E = EWSYS[key], sd = sideAt();
+          if (!E || !ewOwn(sd, key)) return false;
+          const st = ewAdd(key, p.slice(), sd, false);
+          if (!st){ say("РЕБ не розгорнуто: місце або ліміт станцій"); return false; }
+          say(`РЕБ «${E.n}»: розгортання ${E.rdy} с`);
+          if (typeof ewPanel === "function") ewPanel();
+          return true;
+        }
+        if (kind === "air"){
+          const T = typeOf(key), A = ap(); if (!T || !A) return false;
+          const sd = side(T), n = nearestSite(sd, p); if (!n) return false;
+          const idx = (window.BV_SITES || []).indexOf(n.s);
+          const ok = HOOKS.adCmd("takeoff", { site: idx, key, ammo: ammoFor(key, T), patrol: p.slice(), lo: null });
+          if (!ok){ say("Зліт відхилено: дальність, склад або точка патрулювання"); return false; }
+          say(`${T.n} злітає з аеродрому «${n.s.n}» → патрулювання`);
+          if (HOOKS.apRender) HOOKS.apRender();
+          return true;
+        }
+      } catch (e) { say("Не вдалося виконати наказ"); if (window.console) console.error("[dnd]", e); return false; }
+      return false;
+    }
+  };
+
+  window.BV_DND_HOST = {
+    HOOKS,
+    S7,
+    toast: m => toast(m),
+    circleRing: (c, km, n) => circleRing(c, km, n),
+    supports: (kind, key) => {
+      if (kind === "ad" || kind === "air"){ const T = typeOf(key); return !!T && !T.ship; }
+      if (kind === "rad") return true;
+      if (kind === "ew") return true;
+      return false;
+    },
+    posts: () => (typeof AD_POSTS !== "undefined" ? AD_POSTS : []),
+  };
+  HOOKS.dndAp = dndAp;
+  HOOKS.dndLp = { zone: () => null, probe: () => bad("Ракети — через панель пуску"), apply: () => false };
+})();
 
   /* images */
   map.once("load", () => {
@@ -5440,6 +6105,50 @@ function loadAct(a, w, v){
   }
   $("selX").onclick = () => selClear();
   HOOKS.selClear = selClear;
+  /* bv-quick-glue — етап 2 (панель швидкого доступу): читання списку ПВО й дії «вибрати + камера».
+     Вставляється поруч із HOOKS.selClear, де доступні ADS, selSet, SEL, allowSide. Нової логіки не додає:
+     вибір — та сама функція selSet, що й клік по техніці на мапі. */
+  const QGRP = new Set();                       // етап 4: підрозділ — набір id систем ППО (лише читання/зміна вибору)
+  HOOKS.quickGroupIds = () => [...QGRP].filter(id => ADS.units.has(id));
+  HOOKS.quickGroupSet = ids => { QGRP.clear(); for (const i of ids) QGRP.add(i); };
+  HOOKS.quickUnits = () => {
+    const out = [];
+    for (const u of ADS.units.values()){
+      if (!u || !allowSide(u.side || "ua")) continue;
+      const T = AD_TYPES[u.key]; if (!T) continue;
+      out.push({ id: u.id, key: u.key, name: T.n, state: u.state, mag: u.mag | 0, max: T.mag | 0, reserve: u.reserve === Infinity ? "inf" : (u.reserve | 0),
+        mode: u.mode || "auto", air: !!T.air, post: u.post || "", dmg: window.BV_DMG ? window.BV_DMG.level(u.id) : 0, pos: u.pos, side: u.side || "ua", sel: SEL.kind === "ad" && SEL.id === u.id, grp: QGRP.has(u.id) });
+    }
+    return out;
+  };
+  HOOKS.quickFocus = id => {
+    const u = ADS.units.get(id); if (!u || !allowSide(u.side || "ua")) return false;
+    selSet("ad", id);
+    if (S7.map && u.pos) S7.map.easeTo({ center: u.pos, zoom: Math.max(S7.map.getZoom(), 7), duration: 600 });
+    return true;
+  };
+  /* етап 3: лише перевірені команди з контекстного меню; кожна йде через ту саму команду, що й панель */
+  HOOKS.quickOrder = (id, op, v) => {
+    const u = ADS.units.get(id); if (!u || !allowSide(u.side || "ua")) return false;
+    if (op === "reload") return !!HOOKS.adCmd("reload", { id });
+    if (op === "mode" && (v === "auto" || v === "manual")) return !!HOOKS.adCmd("mode", { id, v });
+    if (op === "remove") return !!HOOKS.adCmd("remove", { id });
+    if (op === "patrolTo" && v && v.length === 2) return !!HOOKS.adCmd("airCmd", { id, p: [+v[0], +v[1]] });   // маршрути: точка патрулювання
+    if (op === "rtb") return !!HOOKS.adCmd("rtb", { id });
+    if (op === "repair") return !!(window.BV_DMG && window.BV_DMG.repair(id));
+    if (op === "addMag" && typeof v === "number" && v > 0) return !!HOOKS.adCmd("add", { id, v });
+    return false;
+  };
+  HOOKS.quickSelect = id => { if (!ADS.units.get(id)) return false; selSet("ad", id); return true; };
+  window.BV_QUICK = { list: () => HOOKS.quickUnits(), focus: id => HOOKS.quickFocus(id), order: (id, op, v) => HOOKS.quickOrder(id, op, v),
+    select: id => HOOKS.quickSelect(id),
+    group: {
+      ids: () => HOOKS.quickGroupIds(),
+      set: ids => HOOKS.quickGroupSet(ids),
+      clear: () => HOOKS.quickGroupSet([]),
+      toggle: id => { const g = HOOKS.quickGroupIds(); HOOKS.quickGroupSet(g.includes(id) ? g.filter(x => x !== id) : [...g, id]); },
+    } };
+  /* bv-quick-glue-end */
   /* ---------- етап 7.31: камера під час керування ----------
      Поки гравець керує літаком, вертольотом, кораблем, морським дроном, FPV чи дроном-перехоплювачем, камера сама йде за ним
      у відповідному масштабі; наближати й віддаляти мапу не можна. Зсунути мапу (оглянутися) можна — за мить камера повертається.
@@ -6307,11 +7016,11 @@ function radTargets(){
   for (const u of units.values()){                                                 // етап 7.60: авіація-носії теж видимі РЛС
     if (u.kind !== "c" || u.fall || !u.pos) continue;
     const C = CARRIERS[u.key]; if (!C || C.kind !== "air") continue;
-    const q = radXY(u.pos); tg.push({ id: u.id, side: u.sd || "ru", x: q.x, y: q.y, cat: "bomber", alt: "mid" });
+    const q = radXY(u.pos); tg.push({ id: u.id, side: u.sd || "ru", x: q.x, y: q.y, cat: "bomber", alt: ((HOOKS.acH ? HOOKS.acH("c" + u.id) : 0) > 0 && (HOOKS.acH ? HOOKS.acH("c" + u.id) : 0) < 600) ? "low" : "mid", hm: (HOOKS.acH ? HOOKS.acH("c" + u.id) : 0) });
   }
   for (const a of ADS.units.values()){                                             // літаки й вертольоти ППО в повітрі
     const T = AD_TYPES[a.key]; if (!T || !T.air || a.state === "base" || a.state === "reload" || !a.pos) continue;
-    const q = radXY(a.pos); tg.push({ id: "a" + a.id, side: a.side || "ua", x: q.x, y: q.y, cat: T.heli ? "heli" : "fighter", alt: T.heli ? "low" : "mid" });
+    const q = radXY(a.pos); tg.push({ id: "a" + a.id, side: a.side || "ua", x: q.x, y: q.y, cat: T.heli ? "heli" : "fighter", alt: T.heli ? "low" : "mid", hm: (HOOKS.acH ? HOOKS.acH("f" + a.id) : 0) });
   }
   aewTargets(tg);                                       // етап 8: повітряні цілі
   return tg;
@@ -6420,8 +7129,8 @@ function radThumb(type, id){
    Антена і промінь беруть азимут із симуляції (BV_RADAR.beam): az (на момент останнього кроку) + w · RAD.acc (ігровий час, що ще не пройшов крок).
    Гра на паузі — антена стоїть; станція вимкнена / розгортається / переміщується — не обертається; перевантаження — обертання повільніше.
    Відмітки — це реальні влучання променя (st.hits), а не анімація. */
-const RADVIS = { c: null, g: null, W: 0, H: 0, dpr: 1, img: {}, empty: true, raf: 0, on: Object.assign({ body: true, ant: true, scan: true, hits: true }, lsGet("bvRadLayers", {})) };
-const RADVIS_N = { body: "Корпус", ant: "Антена", scan: "Промінь", hits: "Контакти" };
+const RADVIS = { c: null, g: null, W: 0, H: 0, dpr: 1, img: {}, empty: true, raf: 0, on: Object.assign({ body: true, ant: true, scan: true, hits: true, pic: true, link: true }, lsGet("bvRadLayers", {})) };
+const RADVIS_N = { body: "Корпус", ant: "Антена", scan: "Промінь", hits: "Імпульси", pic: "Цілі", link: "Лінії" };
 function radLayerChips(){ return Object.keys(RADVIS_N).map(k => `<button class="chip ${RADVIS.on[k] ? "on" : ""}" data-ad="radlayer" data-v="${k}">${RADVIS_N[k]}</button>`).join(""); }
 function radSz(z){ const S = [[3, 0.28], [6, 0.42], [9, 0.62], [12, 1]]; if (z <= S[0][0]) return S[0][1]; for (let i = 1; i < S.length; i++) if (z <= S[i][0]){ const a = S[i - 1], b = S[i]; return a[1] + (b[1] - a[1]) * (z - a[0]) / (b[0] - a[0]); } return S[S.length - 1][1]; }
 function radPart(rid){
@@ -6494,6 +7203,92 @@ function radvisDraw(now){
     }
     g.globalAlpha = 1;
   }
+  if (V.on.pic && !fogSide()) radpicDraw(g, v, W, H, sim, acc, now);      // radpic:v1
+}
+/* radpic:v1 */
+/* ---------- етап 7.72: картина цілей на полотні ----------
+   Стани (колір = RAD_ST_COL): попередній — порожня точка; виявлено — жовте кільце; супровід — оранжевий ромб + вектор швидкості;
+   ЗАХОПЛЕННЯ (супровід/ідентифікація з впевненістю ≥ 0,6 — та сама умова, що пускає ЗРК) — червона мітка з кутовими дужками, пульсом і ореолом;
+   втрачений — тьмяне порожнє кільце, що згасає. Позиція екстраполюється за вектором між оновленнями — без ривків.
+   Лінії РЛС→ціль: від кожної станції, що свіжо веде захоплену ціль. Ракети РЛ-типу, що ведуться мережею (m.cued), — штрихова лінія від станції до ракети. */
+function radpicDraw(g, v, W, H, sim, acc, now){
+  const V = RADVIS, tn = sim.t + acc, kmpp = lat => fxKmpp(v, lat);
+  const pulse = 0.5 + 0.5 * Math.sin(now / 230), flow = -(now / 45) % 1000;
+  const scr = (x, y) => fxXY(v, radLL(x, y));
+  for (const sd of ["ua", "ru"]){
+    if (!ewMine(sd)) continue;
+    const list = sim.pic[sd].air, locks = [];
+    for (const c of list){
+      const lost = c.state === "lost", age = tn - c.lastUpdatedAt;
+      if (lost && age > 7) continue;
+      const dt = c.hasV ? Math.min(12, Math.max(0, age)) : 0, X = c.x + (c.vx || 0) * dt, Y = c.y + (c.vy || 0) * dt;
+      const [px, py] = scr(X, Y); if (!(px > -60 && py > -60 && px < W + 60 && py < H + 60)) continue;
+      const rank = c.state === "identified" ? 4 : c.state === "tracking" ? 3 : c.state === "detected" ? 2 : 1;
+      const lock = !lost && rank >= 3 && c.conf >= 0.6, col = RAD_ST_COL[c.state] || "#ffd23f";
+      const fade = lost ? Math.max(0.12, 0.5 * (1 - (age - 0) / 7)) : Math.min(1, 0.45 + c.conf * 0.7) * (age > 6 ? Math.max(0.45, 1 - (age - 6) / 10) : 1);
+      g.globalAlpha = fade;
+      if (rank <= 2 && !lost){                                          // невизначеність положення
+        const R = Math.min(46, Math.max(5, c.sigma / kmpp(radLL(X, Y)[1])));
+        g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([3, 4]); g.beginPath(); g.arc(px, py, R, 0, 7); g.stroke(); g.setLineDash([]);
+      }
+      if (rank >= 3 && !lost){                                          // ореол
+        const gr = g.createRadialGradient(px, py, 0, px, py, lock ? 26 : 18); gr.addColorStop(0, col + (lock ? "88" : "55")); gr.addColorStop(1, col + "00");
+        g.fillStyle = gr; g.beginPath(); g.arc(px, py, lock ? 26 : 18, 0, 7); g.fill();
+      }
+      if (c.hasV && rank >= 3 && !lost){                                // вектор швидкості (≈ 25 с)
+        const [qx, qy] = scr(X + c.vx * 25, Y + c.vy * 25);
+        g.strokeStyle = col; g.lineWidth = 1.3; g.beginPath(); g.moveTo(px, py); g.lineTo(qx, qy); g.stroke();
+      }
+      g.lineWidth = 1.6; g.strokeStyle = col; g.fillStyle = col;
+      if (lost){ g.setLineDash([2, 3]); g.beginPath(); g.arc(px, py, 5, 0, 7); g.stroke(); g.setLineDash([]); }
+      else if (rank === 1){ g.beginPath(); g.arc(px, py, 2.6, 0, 7); g.stroke(); }
+      else if (rank === 2){ g.beginPath(); g.arc(px, py, 3, 0, 7); g.fill(); g.beginPath(); g.arc(px, py, 6.5, 0, 7); g.stroke(); }
+      else {
+        const r = lock ? 6.5 : 5.2;
+        g.beginPath(); g.moveTo(px, py - r); g.lineTo(px + r, py); g.lineTo(px, py + r); g.lineTo(px - r, py); g.closePath(); g.fill();
+        g.strokeStyle = "#0e1116"; g.lineWidth = 1; g.stroke();
+        if (lock){
+          const b = 11 + pulse * 2.5, l = 4.5; g.strokeStyle = col; g.lineWidth = 1.8;
+          for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]){ g.beginPath(); g.moveTo(px + sx * b, py + sy * (b - l)); g.lineTo(px + sx * b, py + sy * b); g.lineTo(px + sx * (b - l), py + sy * b); g.stroke(); }
+          g.globalAlpha = fade * (1 - pulse) * 0.8; g.lineWidth = 1.3; g.beginPath(); g.arc(px, py, 9 + pulse * 12, 0, 7); g.stroke();
+          locks.push({ c, px, py, col });
+        }
+      }
+      g.globalAlpha = 1;
+    }
+    if (V.on.link && locks.length){                                     // лінії РЛС → захоплена ціль
+      g.lineWidth = 1; g.setLineDash([5, 6]); g.lineDashOffset = flow;
+      for (const L of locks){
+        for (const id in L.c.src){
+          const s = L.c.src[id]; if (tn - s.t > s.ttl) continue;
+          const m = RAD.meta.get(id); if (!m || m.side !== sd) continue;
+          const [sx, sy] = fxXY(v, m.c);
+          g.globalAlpha = 0.16 + 0.25 * Math.min(1, s.conf); g.strokeStyle = L.col;
+          g.beginPath(); g.moveTo(sx, sy); g.lineTo(L.px, L.py); g.stroke();
+        }
+      }
+      g.setLineDash([]); g.lineDashOffset = 0; g.globalAlpha = 1;
+    }
+  }
+  /* ракети, що ведуться мережею РЛС/ДРЛО (етап 7.71): штрихова лінія від станції, що веде ціль, до ракети */
+  const AC = window.BV_ACG;
+  if (V.on.link && AC && AC.ms && AC.ms.length){
+    g.lineWidth = 1.2; g.setLineDash([2, 5]); g.lineDashOffset = -flow;
+    for (const m of AC.ms){
+      if (m.dead || !m.cued || !m.pos || !ewMine(m.side) || !m.src) continue;
+      let s0; try { s0 = m.src(); } catch (e) { continue; } if (!s0 || !s0.link || !(s0.q > 0)) continue;
+      const ref = String(m.tgt), id = ref.slice(1), ks = ref[0] === "f" ? ["a" + id, "ad" + id] : [id, "c" + id];
+      let c = null; for (const k of ks){ const x = RAD.lock.get(m.side + ":" + k); if (x && (!c || x.conf > c.conf)) c = x; }
+      if (!c) continue;
+      let best = null, bt = -1; for (const sid in c.src){ const s = c.src[sid]; if (s.t > bt && tn - s.t <= s.ttl && RAD.meta.get(sid)) { bt = s.t; best = sid; } }
+      if (!best) continue;
+      const [sx, sy] = fxXY(v, RAD.meta.get(best).c), [mx, my] = fxXY(v, m.pos);
+      g.globalAlpha = 0.5; g.strokeStyle = m.side === "ua" ? "#22c3e6" : "#ff6b6b";
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(mx, my); g.stroke();
+      g.globalAlpha = 0.9; g.fillStyle = g.strokeStyle; g.beginPath(); g.arc(mx, my, 2.6, 0, 7); g.fill();
+    }
+    g.setLineDash([]); g.lineDashOffset = 0; g.globalAlpha = 1;
+  }
 }
 function radarRender(now){
   const map = S7.map; if (!map || (now - RAD.rt < 250 && !RAD.dirty)) return; RAD.rt = now;
@@ -6527,7 +7322,7 @@ function radarRender(now){
       }
       for (const sd of ["ua", "ru"]){
         if (!ewMine(sd)) continue;
-        for (const c of (fogSide() ? [] : sim.pic[sd].air)){      // 7.60: у тумані контакти малює полотно fogLayer
+        for (const c of (fogSide() || RADVIS.on.pic ? [] : sim.pic[sd].air)){      // 7.60: у тумані контакти малює полотно fogLayer
           const dx = c.state === "lost" ? 0 : Math.min(15, Math.max(0, sim.t - c.lastUpdatedAt));
           cf.push({ type: "Feature", properties: { id: c.id, c: RAD_ST_COL[c.state], r: c.state === "preliminary" ? 3 : c.state === "detected" ? 4 : 5, o: Math.max(0.25, Math.min(1, c.conf + 0.2)) }, geometry: { type: "Point", coordinates: radLL(c.x + c.vx * dx, c.y + c.vy * dx) } });
         }
@@ -6602,7 +7397,7 @@ function aewCover(sd){ for (const u of ADS.units.values()) if (aewUnit(u) && u.s
 
 /* автомат станів ДРЛО: викликається замість airStep */
 function aewStep(u, T, sd){
-  const C = window.BV_AEW.CFG;
+  const C = window.BV_AEW.CFG, A = window.BV_AEW;
   if (u.state === "base") return;
   ADS.dirty = true;
   if (u.state === "reload"){                                    // перезарядка/заправка на аеродромі
@@ -6626,7 +7421,7 @@ function aewStep(u, T, sd){
     const v = airSpeed(u, T, AIR.cruise * airK(T), sd);
     if (airFollow(u, v, sd)){
       u.pos = u.home.slice(); u.sp = 0;
-      if (u.after === "patrol" && u.reserve > 0){ u.state = "reload"; u.rl = C.turnaround; }
+      if (u.after === "patrol" && u.reserve > 0){ u.state = "reload"; u.rl = A.tp(u.key, "turnaround"); }
       else { u.state = "base"; u.fuel = 1; }
     }
     return;
@@ -6637,7 +7432,7 @@ function aewStep(u, T, sd){
     return;
   }
   // патрулювання: коло радіусом orbitKm навколо точки, перехід до точки, якщо далеко
-  const R = C.orbitKm, dp = hav(u.pos, u.patrol);
+  const R = A.tp(u.key, "orbitKm"), dp = hav(u.pos, u.patrol);
   let aim;
   if (dp > R * 1.6) aim = u.patrol;
   else { const b = (brg(u.patrol, u.pos) + 110) * D2R; aim = offKm(u.patrol, Math.sin(b) * R, Math.cos(b) * R); }
@@ -6653,10 +7448,10 @@ function aewSync(){
   const sim = radSim(), keep = new Set(), A = window.BV_AEW;
   for (const u of ADS.units.values()){
     if (!aewUnit(u) || !aewAir(u)) continue;
-    const T = AD_TYPES[u.key], q = radXY(u.pos), h = A.height(u.state), R = A.rangeKm(h);
+    const T = AD_TYPES[u.key], q = radXY(u.pos), h = A.height(u.state, u.key), R = A.rangeKm(h, u.key);
     let st = u.rsid ? sim.stations.find(s => s.id === u.rsid) : null;
     if (!st){
-      st = BV.addStation(sim, { type: A.RADAR.id, id: "AEW" + u.id, x: q.x, y: q.y, status: "working", cmd: "HQ-" + T.side, bal: { rangeKm: R } });
+      st = BV.addStation(sim, { type: A.radarFor(u.key).id, id: "AEW" + u.id, x: q.x, y: q.y, status: "working", cmd: "HQ-" + T.side, bal: { rangeKm: R } });
       u.rsid = st.id;
     }
     st.x = q.x; st.y = q.y; st.h = h;
@@ -6679,13 +7474,13 @@ function aewTargets(tg){
     const T = AD_TYPES[u.key];
     if (!T || !T.air || !u.pos || u.state === "base" || u.state === "reload") continue;
     const q = radXY(u.pos);
-    tg.push({ id: "ad" + u.id, side: u.side || "ua", x: q.x, y: q.y, cat: T.heli ? "heli" : "fighter", alt: T.heli ? "low" : "mid" });
+    tg.push({ id: "ad" + u.id, side: u.side || "ua", x: q.x, y: q.y, cat: T.heli ? "heli" : "fighter", alt: T.heli ? "low" : "mid", hm: (HOOKS.acH ? HOOKS.acH("f" + u.id) : 0) });
   }
   for (const u of units.values()){
     if (u.kind !== "c" || u.fall || !u.pos || !u.avia) continue;
     const CR = CARRIERS[u.key]; if (!CR || CR.kind !== "air") continue;
     const q = radXY(u.pos);
-    tg.push({ id: "c" + u.id, side: u.sd || "ru", x: q.x, y: q.y, cat: "bomber", alt: "mid" });
+    tg.push({ id: "c" + u.id, side: u.sd || "ru", x: q.x, y: q.y, cat: "bomber", alt: ((HOOKS.acH ? HOOKS.acH("c" + u.id) : 0) > 0 && (HOOKS.acH ? HOOKS.acH("c" + u.id) : 0) < 600) ? "low" : "mid", hm: (HOOKS.acH ? HOOKS.acH("c" + u.id) : 0) });
   }
   return tg;
 }
@@ -6700,7 +7495,7 @@ function aewCue(u, T){
     const t = units.get(c._ref);
     if (!t || t.kind !== "w" || t.fall || !isFoe(u, t) || !WEAPONS[t.key]) continue;
     if (!(T.p[AD_CI[WEAPONS[t.key].ad]] > 0) || adSkipT(u, t) || !patrolOK(sd, t.pos)) continue;
-    if (hav(u.patrol, t.pos) > A.CFG.cueKm) continue;
+    if (hav(u.patrol, t.pos) > A.tp(u.key, "cueKm")) continue;
     const d = hav(u.pos, t.pos); if (d < bd){ bd = d; best = t; }
   }
   return best;
@@ -7573,7 +8368,7 @@ const ARS = {
 const AD_STOCK = {
   // етап 7.19: Бук-М2 і Стріла-10 — тепер у Росії; нові системи обох сторін
   ua: { aew_saab340: 1, patriot: 3, sampt: 1, iris: 4, nasams: 4, koral: 2, s125: 2, hawk: 2, shershen: 3, osa: 3, vampire: 4, stormer: 3, gepard: 8, skynex: 3, tunguska: 3, shilka: 4, zu23: 6, mvg: 16, igla: 8, stinger: 8, p1sun: 6, sting: 4, bullet: 4, strila: 3, litavr: 3, alexa: 2, duck: 4, zirka: 3, burewiy: 3, octopus: 2, ueb1: 3, jedi: 3, groza: 2, mig29: 4, f16: 3, mirage: 3, mi24: 4, mi8: 4 },
-  ru: { s500: 1, s400: 4, s300v: 2, s300: 4, s350: 3, buk3: 5, buk: 4, tor: 6, pantsir: 8, sosna: 4, kub: 3, osa_r: 3, strela: 3, shilka_r: 4, zu23m: 6, mvg_r: 12, verba: 8, igla_r: 6, strela2: 8, yolka: 6, veter: 3, lis2: 3, roscherk: 3, hunt: 4, arhangel: 3, lis: 4, grachonok: 3, su27: 6, su35: 4, su30: 4, mi28: 4, ka52: 4 }
+  ru: { aew_a50: 1, s500: 1, s400: 4, s300v: 2, s300: 4, s350: 3, buk3: 5, buk: 4, tor: 6, pantsir: 8, sosna: 4, kub: 3, osa_r: 3, strela: 3, shilka_r: 4, zu23m: 6, mvg_r: 12, verba: 8, igla_r: 6, strela2: 8, yolka: 6, veter: 3, lis2: 3, roscherk: 3, hunt: 4, arhangel: 3, lis: 4, grachonok: 3, su27: 6, su35: 4, su30: 4, mi28: 4, ka52: 4 }
 };
 const AD_DAILY = { ua: { iris: 1, nasams: 1, gepard: 2, mvg: 4, stinger: 2, p1sun: 2 }, ru: { pantsir: 2, tor: 1, buk3: 1, mvg_r: 3, verba: 2, yolka: 2 } };     // етап 7.19: + дрони-перехоплювачі
 const AMMO_CAP = 10;           // магазинів на установку в бойових режимах
@@ -7643,7 +8438,7 @@ const GAME = {
 window.BV_GAME = GAME;
 if (/[#&?]debug\b/.test(location.hash + location.search)) window.BV_EVAL = c => eval(c);      // налагодження/бенчмарки: доступ до внутрішньої області видимості (лише з #debug)
 const isGuest = () => GAME.on && GAME.puppet;
-const canAttack = sd => { const M = MODES[GAME.mode]; return !!M && (M.att === "both" || M.att === sd || (M.att === "turn" && GAME.attacker === sd)); };
+const canAttack = sd => { const M = MODES[GAME.mode]; if (window.BV_DIP && window.BV_DIP.truceOn()) return false; /* dip:truce */ return !!M && (M.att === "both" || M.att === sd || (M.att === "turn" && GAME.attacker === sd)); };
 const prodOn = sd => { const M = MODES[GAME.mode]; return GAME.phase === "run" && !GAME.unlimited && !!M && (M.prod === "both" || (M.prod === "def" && GAME.attacker !== sd)); };
 const adOn = sd => { const M = MODES[GAME.mode]; return !!(M && M.ad && M.ad[sd]); };
 function stockOf(sd, key){
@@ -7696,7 +8491,7 @@ function startGame(cfg){
     if (ak) for (const k of ICBM_KEYS) if (k in GAME.stock[sd]) GAME.stock[sd][k] = 0;     // етап 7.37: міжконтинентальних на старті немає — лише виробити
     GAME.ads[sd] = M.ad && M.ad[sd] ? hardN(AD_STOCK[sd], HARD.ad) : {};
   }
-  ecoInit(); GAME.carCool = []; HOOKS.avInit && HOOKS.avInit();      // етап 4: аеродроми, стоянки
+  ecoInit(); GAME.carCool = []; HOOKS.avInit && HOOKS.avInit(); HOOKS.acInit && HOOKS.acInit();      // етап 4: аеродроми, стоянки
   SIM.scale = 1; GAME.tempo = 1;        // етап 7.4: гра йде лише в базовому темпі
   SIM.paused = false;
   recReset();
@@ -7706,6 +8501,7 @@ function startGame(cfg){
   if (GAME.phase === "run") recFrame();
   HOOKS.lpRefresh && HOOKS.lpRefresh(); HOOKS.apRefresh && HOOKS.apRefresh();
   S7.onGameStart && S7.onGameStart();
+  if (window.BV_DIP) window.BV_DIP.start();      /* dip:start */
 }
 function beginRun(){
   if (GAME.phase !== "prep") return;
@@ -7766,6 +8562,7 @@ function finishGame(){
   SIM.paused = true;
   const res = computeResults();
   GAME.res = res;
+  if (window.BV_DIP) window.BV_DIP.over(res);      /* dip:over */
   S7.onGameOver && S7.onGameOver(res);
 }
 function computeResults(){
@@ -7934,6 +8731,7 @@ function gameStep(sd){
   if (!GAME.on || GAME.puppet || GAME.phase !== "run") return;
   GAME.clock += sd;
   econStep(sd);
+  if (window.BV_DIP) window.BV_DIP.step(sd);      /* dip:step */
   logiStep(sd); lgHoming();
   infStep(sd);                                             // етап 7.43: пальне, електроенергія, експорт
   const M = MODES[GAME.mode];
@@ -10014,8 +10812,8 @@ function infPwF(sd){
   return P.k >= 0.999 ? 1 : Math.max(0, (P.k - PW.stop) / (1 - PW.stop));
 }
 function infIncK(sd){
-  const E = ecoE(sd), P = E && E.pw; if (!P) return 1;
-  return (0.6 + 0.4 * P.k) * (P.gk || 1);
+  const E = ecoE(sd), P = E && E.pw, dk = window.BV_DIP ? window.BV_DIP.incK(sd) : 1; /* dip:inc */ if (!P) return dk;
+  return (0.6 + 0.4 * P.k) * (P.gk || 1) * dk;
 }
 /* ціна цілі (для бота) */
 function infValue(o){
@@ -15495,7 +16293,7 @@ body.tping-on #map,body.tping-on .maplibregl-canvas{cursor:crosshair!important}`
   let gbSig = "";
   const mySides = () => ["ua", "ru"].filter(sd => GAME.ctrl[sd] === "me");
   function gmBuild(){ body.classList.add("s7-game"); body.classList.toggle("s7-spec", !!GAME.spec); gbSig = ""; facClose(); S7.lgClose && S7.lgClose(); $("gmChat").classList.remove("on"); $("gmStat").classList.remove("on"); $("gmFree").classList.remove("on"); gmTick(); }
-  function gmHide(){ body.classList.remove("s7-game", "s7-spec"); facClose(); S7.lgClose && S7.lgClose(); $("gmChat").classList.remove("on"); $("gmStat").classList.remove("on"); $("gmFree").classList.remove("on"); }
+  function gmHide(){ body.classList.remove("s7-game", "s7-spec"); { const _l = $("layers"), _b = $("lyr"); _l && _l.classList.remove("open"); _b && _b.classList.remove("on"); } /* layers-battle:v1 */ facClose(); S7.lgClose && S7.lgClose(); $("gmChat").classList.remove("on"); $("gmStat").classList.remove("on"); $("gmFree").classList.remove("on"); }
   /* ---------- етап 7.18: полігон — час і бот за одну зі сторін (під час бою) ---------- */
   const freeOk = () => GAME.on && GAME.ctx === "sandbox" && !GAME.spec && !GAME.puppet && GAME.phase !== "over";
   const botSide = () => ["ua", "ru"].find(sd => GAME.ctrl[sd] === "bot") || "";
@@ -15562,7 +16360,7 @@ body.tping-on #map,body.tping-on .maplibregl-canvas{cursor:crosshair!important}`
     const mh = ms.map(sd => `<span class="${sd}">${fmtM(ecoE(sd).money)}</span>`).join("<em>·</em>") + (ms.length ? "<small>млн $</small>" : "");
     if ($("gbMoney")._h !== mh){ $("gbMoney")._h = mh; $("gbMoney").innerHTML = mh; $("gbMoney").style.display = ms.length ? "" : "none"; }
     const sig = [GAME.phase, GAME.ctx, GAME.spec, SIM.paused, JSON.stringify(GAME.ready), $("gmChat").classList.contains("on"), $("gmStat").classList.contains("on"), $("gmFree").classList.contains("on"), UI.unread, GAME.mode,
-      S7.phone ? (S7.phone.isOpen() ? 1 : 0) + ":" + S7.phone.unread() : "", S7.team ? S7.team.sig() : ""].join("|");      // етап 7.35: телефон
+      S7.phone ? (S7.phone.isOpen() ? 1 : 0) + ":" + S7.phone.unread() : "", S7.team ? S7.team.sig() : "", window.BV_DIP ? window.BV_DIP.sig() : ""].join("|");      /* dip:sig */      // етап 7.35: телефон
     if (sig !== gbSig){ gbSig = sig; $("gbBtns").innerHTML = gmButtons(); }
     facTick(); lgTick(); lgRender(); statTick(); freeRender();
     stockBadges();
@@ -15588,6 +16386,7 @@ body.tping-on #map,body.tping-on .maplibregl-canvas{cursor:crosshair!important}`
     }
     if (freeOk()) b.push(`<button class="chip ${$("gmFree").classList.contains("on") ? "on" : ""}" data-s7="gmfree" title="${GAME.mode === "free" ? "Час полігону й бот за одну зі сторін" : "Бот за одну зі сторін"}">${narrow() ? "⚙" : GAME.mode === "free" ? "⚙ Час і бот" : "⚙ Бот"}</button>`);   // етап 7.18
     if (S7.phone){ const un = S7.phone.unread(); b.push(`<button class="chip gm-ph ${S7.phone.isOpen() ? "on" : ""}" data-s7="gmphone" title="Телефон · Bgram">📱${narrow() ? "" : " Телефон"}${un && !S7.phone.isOpen() ? `<span class="bd">${un > 99 ? "99+" : un}</span>` : ""}</button>`); }      // етап 7.35
+    if (window.BV_DIP && window.BV_DIP.available()){ const bg = window.BV_DIP.badge(); b.push(`<button class="chip gm-dip ${window.BV_DIP.isOpen() ? "on" : ""}" data-dip="1" title="Дипломатія: відносини, союзи, торгівля, санкції, війна й мир">🌐${narrow() ? "" : " Дипломатія"}${bg ? `<span class="bd dp">${bg}</span>` : ""}</button>`); }      /* dip:btn */
     b.push(`<button class="chip ${$("gmStat").classList.contains("on") ? "on" : ""}" data-s7="gmstat" title="Збиття повітряних цілей за типами">Збиття</button>`);
     if ((GAME.ctx === "single" || GAME.ctx === "online") && !GAME.spec && GAME.phase !== "over"){      // етап 7.40
       if (GAME.phase === "run") b.push(`<button class="chip gm-cf" data-s7="gmcf" title="Припинення вогню: якщо суперник погодиться — мир, досвід і ранг ×0,5">🕊${narrow() ? "" : " Припинення вогню"}</button>`);
@@ -17634,6 +18433,9 @@ const BC_ICO = {
   shop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 9.5 5 4h14l2 5.5"/><path d="M3 9.5h18v1.2a2.6 2.6 0 0 1-4.5 1.8 2.6 2.6 0 0 1-4.5 0 2.6 2.6 0 0 1-4.5 0A2.6 2.6 0 0 1 3 10.7Z"/><path d="M5 13.5V20h14v-6.5"/><path d="M10 20v-4h4v4"/></svg>`,
   ars: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="7" width="19" height="12" rx="1"/><path d="M2.5 10h19"/><path d="M8 7V4.5h8V7"/><path d="M12 13v3M10.5 14.5h3" stroke-linecap="round"/></svg>`
 };
+queueMicrotask(() => { window.BV_SHOP = S7.shop; });      /* shop v2: міст для 170_shop_v2.js */
+window.BV_DIPX = { HOOKS: () => HOOKS, toast: (m, k) => toast(m, k), ecoE: sd => ecoE(sd), ecoAdd: (sd, p, d) => ecoAdd(sd, p, d), endBy: o => endBy(o), PKEY: () => PKEY };      /* diplomacy:bridge */
+window.BV_DIPX.airReset = () => safeCache.clear();      /* dip:airbridge */
 S7.shop = { sync: bcBalSync, ICO: BC_ICO, levelUp: bcLevelUp, upCard: bcUpCard, open: bcOpen, close: bcClose, topup: bcTopup, isOpen: () => BS.open, battle: bcBattle, resCard: bcResCard, coin: BC_COIN, bal: bcBal,
             ITEMS: BC_ITEMS, BOX: BC_BOX, locked: bcLocked, sort: bcSort, openBox: bcOpenBox, state: BS, model: ctModel, fight: bcFight,
             buy: id => { const it = BC_ITEMS[id]; if (!it || bcOwned(it) || PROF.bc < it.price || bcFight()) return false; PROF.bc -= it.price; PROF.own.push(id); saveProf(); return true; } };

@@ -1,0 +1,57 @@
+/* SKYDOMINION · 173 · дипломатія (BV2: navy + синій + золото) */
+#gmDip{display:none;position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;max-height:78vh;flex-direction:column;z-index:8;overflow:hidden;pointer-events:auto;border-radius:18px 18px 0 0;padding:0 12px 10px;background:rgba(7,13,26,.96);border:1px solid rgba(88,150,255,.28);border-bottom:0;color:#e6ecf7;font-family:"Exo 2",system-ui,sans-serif}
+#gmDip.on{display:flex}
+@media (min-width:640px){#gmDip{left:auto;right:calc(72px + var(--safe-r,0px));top:calc(78px + var(--safe-t,0px));bottom:auto;width:420px;max-height:calc(100vh - 110px);border-radius:14px;border-bottom:1px solid rgba(88,150,255,.28)}}
+#gmDip .hd{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono,monospace);font-size:11px;letter-spacing:.12em;color:#9db4d8;text-transform:uppercase;padding:13px 2px 8px}
+#gmDip .lp-x{background:none;border:0;color:#9db4d8;font-size:22px;cursor:pointer;line-height:1}
+.dp-tabs{display:flex;gap:4px;margin:0 0 8px}
+.dp-tabs button{flex:1;background:rgba(47,140,255,.08);border:1px solid rgba(88,150,255,.2);color:#b9c9e6;border-radius:9px;padding:7px 4px;font:600 12px "Exo 2",sans-serif;cursor:pointer}
+.dp-tabs button.on{background:linear-gradient(180deg,#ffd466,#ffc53d);color:#1a1405;border-color:#ffc53d}
+.dp-tabs .bd,#gmBar .bd.dp{background:#ff4d4d;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:3px}
+.dp-body{overflow-y:auto;overscroll-behavior:contain;flex:1;min-height:0;padding-right:2px}
+.dp-in{width:100%;box-sizing:border-box;background:#0a1224;border:1px solid rgba(88,150,255,.25);border-radius:9px;color:#e6ecf7;padding:8px 10px;margin-bottom:8px;font:500 13px "Exo 2",sans-serif}
+.dp-row{border:1px solid rgba(88,150,255,.16);border-radius:11px;margin-bottom:6px;background:rgba(14,26,50,.7);overflow:hidden}
+.dp-row.open{border-color:rgba(255,197,61,.5)}
+.dp-hd{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;color:inherit;padding:8px 10px;cursor:pointer;text-align:left}
+.dp-f{font-size:22px;line-height:1}
+.dp-n{display:flex;flex-direction:column;min-width:92px;flex:0 0 auto}.dp-n b{font-size:13px;font-weight:700}.dp-n small{font-size:10px;color:#8ea3c7}
+.dp-bar{position:relative;flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden}
+.dp-bar .m{position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.35)}.dp-bar .f{position:absolute;top:0;bottom:0;border-radius:4px}
+.dp-v{font:700 13px var(--mono,monospace);min-width:38px;text-align:right}
+.dp-tags{display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 7px}.dp-tags:empty{display:none}
+.dp-t{font-style:normal;font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid rgba(88,150,255,.3);color:#b9c9e6}
+.dp-t.war{background:rgba(255,77,77,.18);border-color:#ff4d4d;color:#ffb3ad}.dp-t.good{border-color:#3ddc84;color:#9df0c0}.dp-t.al{border-color:#ffc53d;color:#ffd466}.dp-t.mil{border-color:#4cc3ff;color:#9fdcff}.dp-t.tr{border-color:#8bd96a;color:#c6f0b0}.dp-t.sc{border-color:#ff9a3c;color:#ffc58f}
+.dp-det{padding:4px 10px 10px;border-top:1px solid rgba(88,150,255,.14)}
+.dp-meta,.dp-note{font-size:11px;color:#8ea3c7;line-height:1.4;margin:6px 0}
+.dp-acts{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;align-items:center}
+.dp-b{background:rgba(47,140,255,.14);border:1px solid rgba(88,150,255,.4);color:#dbe8ff;border-radius:9px;padding:6px 10px;font:600 12px "Exo 2",sans-serif;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.dp-b small{opacity:.7;font-size:10px}.dp-b.sm{padding:4px 8px;font-size:11px}
+.dp-b.gold{background:linear-gradient(180deg,#ffd466,#ffc53d);color:#1a1405;border-color:#ffc53d}
+.dp-b.ghost{background:transparent}.dp-b.danger{border-color:rgba(255,77,77,.6);color:#ffb3ad}
+.dp-b.dis{opacity:.45;cursor:not-allowed}.dp-why{font-size:10px;color:#ff9a3c;font-style:normal;flex-basis:100%;margin-top:-3px}
+.dp-b:hover:not(.dis){filter:brightness(1.15)}
+.dp-sec{font:700 10.5px var(--mono,monospace);letter-spacing:.12em;text-transform:uppercase;color:#9db4d8;margin:12px 2px 6px}
+.dp-line{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid rgba(88,150,255,.14);border-radius:9px;margin-bottom:4px;font-size:12px}
+.dp-line span{flex:1}.dp-line b{font-size:11px;color:#ffd466}.dp-line b.bad{color:#ff7a6b}.dp-line b.good{color:#6fe5a1}
+.dp-empty{font-size:12px;color:#6f84a8;padding:4px 8px}
+.dp-card{border:1px solid rgba(255,197,61,.45);background:rgba(255,197,61,.06);border-radius:11px;padding:9px 10px;margin-bottom:8px}.dp-ct{font-size:13px;line-height:1.4}
+.dp-log{display:flex;gap:8px;font-size:12px;padding:4px 2px;border-bottom:1px solid rgba(88,150,255,.08);line-height:1.35}.dp-log time{font:10px var(--mono,monospace);color:#6f84a8;flex:0 0 62px;padding-top:2px}
+.dp-log.war span{color:#ff9d92}.dp-log.good span{color:#a8efc6}.dp-log.bad span{color:#ffc58f}.dp-log.ask span{color:#ffd466}
+.dp-pov{display:flex;gap:6px;margin-bottom:8px}
+#gmBar .chip.gm-dip{border-color:rgba(255,197,61,.45);color:#ffe29a}
+/* етап 7.73: повітряний простір */
+.dp-t.air{border-color:#4cc3ff;color:#9fdcff;background:rgba(76,195,255,.1)}.dp-t.air.w{border-style:dashed;color:#b9c9e6}
+.dp-tabs .bd.ok{background:#3ddc84;color:#06210f}
+.dp-air{margin-top:8px;padding-top:2px;border-top:1px dashed rgba(88,150,255,.2)}
+.dp-sec.sm{margin:8px 0 4px;font-size:10px}
+.dp-gates{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0}
+.dp-gate{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 7px;border-radius:8px;border:1px solid rgba(88,150,255,.25);color:#b9c9e6;cursor:help}
+.dp-gate i{font-style:normal;font-weight:800}.dp-gate b{font:700 11px var(--mono,monospace);color:#e6ecf7}.dp-gate small{opacity:.6;font-size:10px}
+.dp-gate.ok{border-color:rgba(61,220,132,.55);background:rgba(61,220,132,.07)}.dp-gate.ok i{color:#3ddc84}
+.dp-gate.no{border-color:rgba(255,122,107,.6);background:rgba(255,77,77,.08)}.dp-gate.no i{color:#ff7a6b}
+.dp-note.ok{color:#9df0c0}
+.dp-scopes{margin:4px 0 0}
+.dp-card.air{border-color:rgba(76,195,255,.5);background:rgba(76,195,255,.06)}
+.dp-terms{font-size:12px;line-height:1.45;color:#cfe0ff;margin:4px 0}
+.dp-bar2{height:5px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin:4px 0}.dp-bar2 i{display:block;height:100%;background:linear-gradient(90deg,#4cc3ff,#3ddc84)}
+.dp-note b.bad{color:#ff7a6b}

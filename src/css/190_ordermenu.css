@@ -1,0 +1,15 @@
+/* SKYDOMINION · 190 · контекстне меню наказів (етап 3). Стиль BV2 AAA: navy, синій, золото, червоний лише для «зняти». */
+#ordMenu{position:fixed;z-index:80;min-width:208px;max-width:min(92vw,260px);padding:6px;
+  background:linear-gradient(180deg,rgba(14,26,46,.97),rgba(8,15,30,.97));border:1px solid rgba(88,150,255,.5);
+  border-radius:4px;box-shadow:0 10px 24px rgba(0,0,0,.55)}
+#ordMenu[hidden]{display:none}
+#ordMenu .om-h{padding:4px 8px 8px;border-bottom:1px solid rgba(88,150,255,.25);margin-bottom:4px}
+#ordMenu .om-h b{display:block;font-size:13px;letter-spacing:.02em;color:#dbe7ff}
+#ordMenu .om-h small{display:block;margin-top:2px;font-size:11px;color:#8fb0e0}
+#ordMenu .om-i{display:block;width:100%;min-height:40px;padding:8px 10px;text-align:left;cursor:pointer;
+  background:transparent;border:1px solid transparent;color:#dbe7ff;border-radius:3px;font:inherit;font-size:13px}
+#ordMenu .om-i:hover,#ordMenu .om-i:focus-visible{outline:none;border-color:#4cc3ff;background:rgba(47,140,255,.18)}
+#ordMenu .om-i:disabled{color:#56678a;cursor:default;background:transparent;border-color:transparent}
+#ordMenu .om-danger{color:#ff9a8f}
+#ordMenu .om-danger:hover,#ordMenu .om-danger:focus-visible{border-color:#ff5a4d;background:rgba(255,90,77,.12)}
+#ordMenu .om-sep{height:1px;margin:4px 6px;background:rgba(88,150,255,.25)}

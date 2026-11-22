@@ -1,0 +1,31 @@
+/* SKYDOMINION · 223 · панель ППО на телефоні (переробка для дотику).
+   Лише для вузьких екранів: шторка вища, список у дві колонки з великими картками, зони натискання від 44 px,
+   нижня кнопка дії завжди видима. Для широких екранів нічого не змінюється. */
+@media (max-width: 760px){
+  html body #adp.open{max-height:82vh!important;max-height:82dvh!important;height:auto!important;display:flex;flex-direction:column;overflow:hidden}
+  html body #adp.open #adBody{flex:1 1 auto;min-height:0;max-height:none;height:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:12px}
+  html body #adp.open .lp-weap{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px;overflow:visible!important;width:100%;box-sizing:border-box}
+  html body #adp.open .lp-weap .wcard,html body #adp.open .wcard{min-height:92px;min-width:0;width:auto!important;flex:initial!important}
+  html body #adp.open .lp-foot{flex:0 0 auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(8,15,30,.6),rgba(8,15,30,.98));border-top:1px solid rgba(88,150,255,.35)}
+  html body #adp.open .lp-foot button,html body #adp.open .lp-foot .btn{min-height:50px;width:100%;font-size:14px}
+  html body #adp.open button,html body #adp.open .wcard,html body #adp.open .trow,html body #adp.open .chip,html body #adp.open .chips > *{min-height:44px}
+  html body #adp.open .lp-sec-h,html body #adp.open .lp-h{font-size:12px}
+  /* панель інструментів: один стовпець, великі рядки */
+  #avWrap{margin:6px 0 10px;padding:4px 4px;width:100%;box-sizing:border-box}
+  #avFold{min-height:46px;font-size:14px}
+  #avToolbar{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+  #avToolbar #mselBtn,#avToolbar #rtBtn{width:100%;min-height:46px;font-size:14px}
+  #avBody #rtPanel .rt-chip{min-height:44px;font-size:13px}
+  #avBody #rtPanel .rt-row{gap:8px}
+  #avBody #rtPanel .rt-it{padding:8px 0}
+  #avCP{font-size:13px}
+  #avCP .cp-u{min-height:44px;font-size:13px}
+  #avProd{font-size:13px}
+  #avProd .pd-go{min-height:48px;font-size:14px}
+  #avProd .pd-s{font-size:12px}
+  /* підпис вибору точки — великий і читабельний */
+  html body #adp.open .lp-foot .lp-hint,html body #adp.open .lp-foot small{font-size:13px}
+}
+@media (max-width: 380px){
+  html body #adp.open .lp-weap{grid-template-columns:minmax(0,1fr)!important}
+}

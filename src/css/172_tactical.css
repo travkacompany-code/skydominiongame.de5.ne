@@ -1,0 +1,30 @@
+/* SKYDOMINION · 172 · тактичний інтерфейс: без неону, свічення й тіней */
+:root{
+  --tac-panel:rgba(12,16,20,.94);
+  --tac-line:#2a3138;
+  --tac-txt:#c9d1d9;
+}
+html body *{ text-shadow:none!important; }
+html body [class*="glow"],
+html body [class*="neon"],
+html body [class*="halo"]{ box-shadow:none!important; filter:none!important; }
+#controls,#layers,#topbar,.mc,.mc-panel{
+  background:var(--tac-panel)!important;
+  border:1px solid var(--tac-line)!important;
+  border-radius:4px!important;
+  box-shadow:none!important;
+}
+#controls::after,#layers h4::before{ box-shadow:none!important; }
+#layers h4::before{ background:#8a939c!important; transform:none!important; }
+#cross{ filter:none!important; }
+
+/* layers-battle:v1 — кнопка й панель шарів мапи доступні лише в бою */
+body:not(.s7-game) #lyr, body:not(.s7-game) #layers{ display:none!important; }
+body.s7-game #layers{ z-index:5; }
+/* layers-battle:end */
+
+/* panel-btns:v1 — «згорнути» не накриває «закрити»: крестик на краю, «згорнути» лівіше */
+html body :is(#launch,#adp,#facp,#lgp) .lp-head{ padding-right:100px!important; }
+html body :is(#launch,#adp,#facp,#lgp) > .pn-fold{ top:8px!important; right:52px!important; width:36px!important; height:36px!important; z-index:3; }
+html body :is(#launch,#adp,#facp,#lgp) .lp-x{ z-index:4; }
+/* panel-btns:end */
