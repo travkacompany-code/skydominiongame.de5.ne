@@ -1,4 +1,4 @@
-/* ---------- етап 8: Saab 340 AEW&C (ASC 890) — літак ДРЛО ----------
+/* ---------- етап 8: літаки ДРЛО — Saab 340 AEW&C (ASC 890, ua) і А-50У (ru) ----------
    Ядро: src/js/02j_aew.js (BV_AEW). Тип — запис AD_TYPES з полем aew:true (стороні ua, без озброєння).
    • Політ: власний автомат станів (база → транзит → патрулювання по колу → бінго/повернення → посадка →
      перезарядка → новий виліт за залишком вильотів). Той самий набір станів, що в авіації ППО, тож команди
@@ -17,7 +17,7 @@ function aewCover(sd){ for (const u of ADS.units.values()) if (aewUnit(u) && u.s
 
 /* автомат станів ДРЛО: викликається замість airStep */
 function aewStep(u, T, sd){
-  const C = window.BV_AEW.CFG;
+  const C = window.BV_AEW.CFG, A = window.BV_AEW;
   if (u.state === "base") return;
   ADS.dirty = true;
   if (u.state === "reload"){                                    // перезарядка/заправка на аеродромі
@@ -41,7 +41,7 @@ function aewStep(u, T, sd){
     const v = airSpeed(u, T, AIR.cruise * airK(T), sd);
     if (airFollow(u, v, sd)){
       u.pos = u.home.slice(); u.sp = 0;
-      if (u.after === "patrol" && u.reserve > 0){ u.state = "reload"; u.rl = C.turnaround; }
+      if (u.after === "patrol" && u.reserve > 0){ u.state = "reload"; u.rl = A.tp(u.key, "turnaround"); }
       else { u.state = "base"; u.fuel = 1; }
     }
     return;
@@ -52,7 +52,7 @@ function aewStep(u, T, sd){
     return;
   }
   // патрулювання: коло радіусом orbitKm навколо точки, перехід до точки, якщо далеко
-  const R = C.orbitKm, dp = hav(u.pos, u.patrol);
+  const R = A.tp(u.key, "orbitKm"), dp = hav(u.pos, u.patrol);
   let aim;
   if (dp > R * 1.6) aim = u.patrol;
   else { const b = (brg(u.patrol, u.pos) + 110) * D2R; aim = offKm(u.patrol, Math.sin(b) * R, Math.cos(b) * R); }
@@ -68,10 +68,10 @@ function aewSync(){
   const sim = radSim(), keep = new Set(), A = window.BV_AEW;
   for (const u of ADS.units.values()){
     if (!aewUnit(u) || !aewAir(u)) continue;
-    const T = AD_TYPES[u.key], q = radXY(u.pos), h = A.height(u.state), R = A.rangeKm(h);
+    const T = AD_TYPES[u.key], q = radXY(u.pos), h = A.height(u.state, u.key), R = A.rangeKm(h, u.key);
     let st = u.rsid ? sim.stations.find(s => s.id === u.rsid) : null;
     if (!st){
-      st = BV.addStation(sim, { type: A.RADAR.id, id: "AEW" + u.id, x: q.x, y: q.y, status: "working", cmd: "HQ-" + T.side, bal: { rangeKm: R } });
+      st = BV.addStation(sim, { type: A.radarFor(u.key).id, id: "AEW" + u.id, x: q.x, y: q.y, status: "working", cmd: "HQ-" + T.side, bal: { rangeKm: R } });
       u.rsid = st.id;
     }
     st.x = q.x; st.y = q.y; st.h = h;
@@ -115,7 +115,7 @@ function aewCue(u, T){
     const t = units.get(c._ref);
     if (!t || t.kind !== "w" || t.fall || !isFoe(u, t) || !WEAPONS[t.key]) continue;
     if (!(T.p[AD_CI[WEAPONS[t.key].ad]] > 0) || adSkipT(u, t) || !patrolOK(sd, t.pos)) continue;
-    if (hav(u.patrol, t.pos) > A.CFG.cueKm) continue;
+    if (hav(u.patrol, t.pos) > A.tp(u.key, "cueKm")) continue;
     const d = hav(u.pos, t.pos); if (d < bd){ bd = d; best = t; }
   }
   return best;

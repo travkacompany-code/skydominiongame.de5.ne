@@ -23,5 +23,12 @@ t('cueOK: застарілий трек — ні', !A.cueOK({ state: 'identified
 t('cueOK: втрачений — ні', !A.cueOK({ state: 'lost', conf: 0.9, lastUpdatedAt: 100 }, 100));
 t('після виходу в повітря вильотів = запас − 1', A.sortiesAfterTakeoff(3) === 2 && A.sortiesAfterTakeoff(1) === 0 && A.sortiesAfterTakeoff(0) === 0);
 t('нескінченний запас лишається нескінченним', A.sortiesAfterTakeoff(Infinity) === Infinity);
+// --- А-50У (Росія): власні параметри типу, Saab без змін
+t('А-50У: дальність 500 км на ешелоні 10 км', A.rangeKm(10000, 'aew_a50') === 500 && A.height('patrol', 'aew_a50') === 10000);
+t('А-50У: нижче — спадає, на землі 0', A.rangeKm(5000, 'aew_a50') < 500 && A.rangeKm(0, 'aew_a50') === 0);
+t('Saab без ключа/з ключем — як раніше', A.rangeKm(A.CFG.alt) === A.CFG.rangeKm && A.rangeKm(A.CFG.alt, 'aew_saab340') === A.CFG.rangeKm);
+t('А-50У: коло 60 км, наведення 320 км, перезарядка 90 с', A.tp('aew_a50', 'orbitKm') === 60 && A.tp('aew_a50', 'cueKm') === 320 && A.tp('aew_a50', 'turnaround') === 90);
+t('Saab: параметри з CFG', A.tp('aew_saab340', 'orbitKm') === A.CFG.orbitKm && A.tp('aew_saab340', 'cueKm') === A.CFG.cueKm);
+t('запис РЛС А-50У: сторона ru, окремий id, повітряний', A.radarFor('aew_a50').side === 'ru' && A.radarFor('aew_a50').id === 'ru_a50aew' && A.radarFor('aew_a50').airborne && A.radarFor('aew_saab340').id === 'ua_saab340aew');
 console.log(`ДРЛО (модуль): OK ${ok}, помилок ${bad}`);
 process.exit(bad ? 1 : 0);
