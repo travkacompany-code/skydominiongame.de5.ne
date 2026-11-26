@@ -29,7 +29,7 @@
     "Прогрес і налаштування буде збережено на цьому пристрої.": ["Прогресс и настройки сохранены на этом устройстве.", "Progress and settings stay saved on this device."],
     "Скасувати": ["Отмена", "Cancel"], "Закрийте вкладку або застосунок, щоб вийти з гри.": ["Закройте вкладку или приложение, чтобы выйти из игры.", "Close the tab or the app to leave the game."],
     "Плануй · Керуй · Перемагай": ["Планируй · Управляй · Побеждай", "Plan · Command · Win"],
-    "Порада": ["Совет", "Tip"], "хв тому": ["мин назад", "min ago"], "год тому": ["ч назад", "h ago"], "дн тому": ["дн назад", "d ago"], "щойно": ["только что", "just now"]
+    "В бій": ["В бой", "Battle"], "Порада": ["Совет", "Tip"], "хв тому": ["мин назад", "min ago"], "год тому": ["ч назад", "h ago"], "дн тому": ["дн назад", "d ago"], "щойно": ["только что", "just now"]
   };
   const T = s => { const l = lang(), v = D[s]; return v ? (l === "ru" ? v[0] : l === "en" ? v[1] : s) : s; };
 
@@ -98,6 +98,7 @@
   ];
   const cardHtml = c => `<button type="button" class="bv2c ${c.cls || ""}" data-card="${c.k}" data-s7="${c.s7}" data-v="${c.v}">
     <span class="in"><i class="bv2c-art" data-art="${c.k === "ars" ? "ars" : c.k}"></i><i class="bv2c-fx"></i>
+      ${c.k === "net" ? `<span class="sd-cta">${T("В бій")}${I.chev}</span>` : ""}
       ${c.k === "net" ? `<span class="bv2c-live"><b></b><em>${T("Онлайн")}</em></span>` : ""}
       <span class="bv2c-tx"><b data-f="t">${c.t}</b><small data-f="s">${c.s}</small></span>
       <i class="bv2c-go">${I.chev}</i></span></button>`;

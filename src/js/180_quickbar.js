@@ -64,6 +64,6 @@
     }
     setOpen(open);
   }
-  setInterval(render, 400);
+  (window.BV_PERF ? BV_PERF.ui(render, 400) : setInterval(render, 400));
   render();
 })();

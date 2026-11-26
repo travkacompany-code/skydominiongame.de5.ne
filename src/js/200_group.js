@@ -87,7 +87,7 @@
     }
   }
   function render(){ drawRings(); }
-  setInterval(render, 400);
+  (window.BV_PERF ? BV_PERF.ui(render, 400) : setInterval(render, 400));
   const mp = map(); if (mp && mp.on) { try { mp.on("move", render); } catch (_) {} }
 
   /* ---------- груповий наказ ---------- */

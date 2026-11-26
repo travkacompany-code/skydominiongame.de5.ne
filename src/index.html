@@ -34,6 +34,9 @@ html body #loader .bv2-ld-scene .vig{background:linear-gradient(180deg,rgba(3,8,
 <style>@@F:css/215_avtoolbar.css@@</style>
 <style>@@F:css/223_mobile_adp.css@@</style>
 <style>@@F:css/224_landscape.css@@</style>
+<style>@@F:css/240_menu_premium.css@@</style>
+<style>@@F:css/250_command_hud.css@@</style>
+<style>@@F:css/260_loader_command.css@@</style>
 </head>
 <body>
 <div id="map"></div>
@@ -208,13 +211,15 @@ html body #loader .bv2-ld-scene .vig{background:linear-gradient(180deg,rgba(3,8,
 
 <div id="loader">
   <div class="box">
-    <div class="ttl">SKY<b>DOMINION</b></div>
+    <img class="ld-logo" alt="SKYDOMINION" src="@@A:loader_logo.webp@@">
+<div class="ttl">SKY<b>DOMINION</b></div>
     <div class="sub">Розгортання тактичної мапи</div>
     <div class="bar"><i></i></div>
     <div class="err" id="loadErr"></div>
   </div>
 </div>
 
+<script>@@F:js/000_core.js@@</script>
 <script>@@F:js/01_geodata.js@@</script>
 
 <script src="bv2-config.js"></script>
@@ -252,5 +257,10 @@ html body #loader .bv2-ld-scene .vig{background:linear-gradient(180deg,rgba(3,8,
 <script>@@F:js/224_landscape.js@@</script>
 <style>@@F:css/225_hud.css@@</style>
 <script>@@F:js/225_hud.js@@</script>
+<style>@@F:css/175_airspace.css@@</style>
+<script>@@F:js/175_airspace_ui.js@@</script>
+<style>@@F:css/176_naval.css@@</style>
+<script>@@F:js/176_naval_sprites.js@@</script>
+<script>@@F:js/176_naval.js@@</script>
 </body>
 </html>

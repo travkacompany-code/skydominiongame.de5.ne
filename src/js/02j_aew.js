@@ -17,7 +17,7 @@
   "use strict";
 
   /* ---------- баланс ---------- */
-  const CFG = {
+  const LIT = {
     alt: 7600,                 // м, робоча висота ДРЛО (крейсерський ешелон)
     rangeKm: 400,              // км, дальність огляду повітряних цілей на робочій висоті (баланс)
     minRangeFrac: 0.25,        // найменша частка дальності (на дуже малій висоті)
@@ -28,13 +28,33 @@
     cueFreshSec: 8,            // с: трек старіший за це не використовується для наведення
     maxSorties: 5             // вильотів за один запуск з аеродрому (ліміт вводу в панелі ППО)
   };
+  /* CFG: геттери — спершу параметри механіки "aew_cfg" з ядра, інакше літерал з LIT */
+  const CFG = {};
+  Object.keys(LIT).forEach(function (k) {
+    Object.defineProperty(CFG, k, {
+      enumerable: true,
+      get: function () {
+        const c = coreNow();
+        const m = c && c.get("mechanic", "aew_cfg");
+        return m && m.params && m.params[k] !== undefined ? m.params[k] : LIT[k];
+      },
+      set: function (v) { LIT[k] = v; }
+    });
+  });
 
   /* ---------- типи ДРЛО: власні дальність, ешелон, коло й радіус наведення (відсутнє поле — з CFG) ---------- */
   const TYPES = {
     aew_saab340: { side: "ua", radar: "ua_saab340aew", name: "Saab 340 AEW&C (ASC 890)" },
     aew_a50: { side: "ru", radar: "ru_a50aew", name: "А-50У (Шмель-М)", alt: 10000, rangeKm: 500, orbitKm: 60, cueKm: 320, turnaround: 90 }
   };
-  const tp = (key, f) => { const t = TYPES[key]; return t && t[f] != null ? t[f] : CFG[f]; };
+  /* етап 9.1b: значення читаються з реєстру ядра, якщо він є (мод може їх змінити); інакше — літерали */
+  const coreNow = () => (root.BV_CORE && root.BV_CORE.has && root.BV_CORE.has("aew", "aew_saab340") ? root.BV_CORE : null);
+  const tp = (key, f) => {
+    const c = coreNow();
+    if (c && TYPES[key]) { const d = c.get("aew", key); if (d && d[f] != null) return d[f]; }
+    const t = TYPES[key];
+    return t && t[f] != null ? t[f] : CFG[f];
+  };
 
   /* ---------- запис РЛС для радіолокаційної симуляції (поля — як у CATALOG 02c_radar.js) ---------- */
   const RADAR = {
@@ -75,8 +95,51 @@
   /* після посадки на аеродромі: скільки вильотів залишилось */
   const sortiesAfterTakeoff = total => (total === Infinity ? Infinity : Math.max(0, (total | 0) - 1));
 
-  const api = { CFG, RADAR, RADAR_A50, TYPES, tp, radarFor, rangeKm, height, airborne, cueOK, sortiesAfterTakeoff };
+  /* ---------- етап 9.1: дзеркало в реєстр ядра (BV_CORE) ----------
+     Вид "aew" — ТТХ ДРЛО (по одному запису на тип), механіка "aew_cfg" — загальний баланс.
+     Гра й досі читає значення з цього файлу (поведінка без змін). Моди можуть змінити баланс
+     через overrides (наприклад "aew:aew_a50"); fromCore() повертає ефективні значення з реєстру. */
+  const CORE_FIELDS = ["alt", "rangeKm", "orbitKm", "cueKm", "turnaround"];
+  function mirrorToCore(core) {
+    if (!core || core.has("aew", "aew_saab340")) return false;   // уже дзеркальовано
+    core.defineKind("aew", {
+      name: { type: "string", req: true },
+      side: { type: "string", req: true, enum: ["ua", "ru"] },
+      alt: { type: "number", min: 0 },
+      rangeKm: { type: "number", min: 0 },
+      orbitKm: { type: "number", min: 0 },
+      cueKm: { type: "number", min: 0 },
+      turnaround: { type: "number", min: 0 },
+      radarId: { type: "string" }
+    });
+    Object.keys(TYPES).forEach(function (key) {
+      const t = TYPES[key];
+      const def = { name: t.name, side: t.side, radarId: radarFor(key).id };
+      CORE_FIELDS.forEach(function (f) { def[f] = tp(key, f); });
+      core.define("aew", key, def);
+    });
+    core.define("mechanic", "aew_cfg", { name: "ДРЛО: загальний баланс", enabled: true, params: Object.assign({}, CFG) });
+    return true;
+  }
+
+  /* ефективні значення з реєстру ядра: { types: {key: {…}}, cfg: {…} } або null, якщо ядра немає */
+  function fromCore(core) {
+    if (!core || !core.has("aew", "aew_saab340")) return null;
+    const types = {};
+    Object.keys(TYPES).forEach(function (key) {
+      const d = core.get("aew", key);
+      types[key] = { name: d.name, side: d.side, radarId: d.radarId, alt: d.alt, rangeKm: d.rangeKm,
+        orbitKm: d.orbitKm, cueKm: d.cueKm, turnaround: d.turnaround };
+    });
+    const m = core.get("mechanic", "aew_cfg");
+    return { types: types, cfg: m ? Object.assign({}, m.params) : Object.assign({}, CFG) };
+  }
+
+  const api = { CFG, RADAR, RADAR_A50, TYPES, tp, radarFor, rangeKm, height, airborne, cueOK, sortiesAfterTakeoff,
+    mirrorToCore, fromCore };
   root.BV_AEW = api;
   /* запис станції — у каталог радіолокатора (без розміщення на землі) */
   if (root.BV_RADAR && root.BV_RADAR.BYID){ root.BV_RADAR.BYID[RADAR.id] = RADAR; root.BV_RADAR.BYID[RADAR_A50.id] = RADAR_A50; }
+  /* зеркало — необов'язкове: збій ядра не повинен зупиняти ДРЛО і гру */
+  if (root.BV_CORE) { try { mirrorToCore(root.BV_CORE); } catch (e) { if (root.console) root.console.warn("[BV_AEW] дзеркало ядра:", e && e.message); } }
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,6 +1,10 @@
 
 (function(){
 "use strict";
+/* perf2: без 230_perf2.js (head) гра веде себе як раніше */
+if (!window.BV_PERF) window.BV_PERF = { p: { sub: 8, trail: 16 }, ruMs: n => n > 250 ? 55 : 33, adMs: a => a ? 45 : 120, ewMs: () => 250, pulseDue: dt => dt > 80,
+  skip: () => false, ui: (f, m) => setInterval(f, m), view: () => null,
+  circle: (c, km, n, R) => { const pts = [], kx = 111.32 * Math.cos(c[1] * R), ky = 110.574; for (let i = 0; i <= n; i++){ const a = i / n * 2 * Math.PI; pts.push([c[0] + km / kx * Math.cos(a), c[1] + km / ky * Math.sin(a)]); } return pts; } };
 
 const LIBS = [
   ["https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js", "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css"],
@@ -1936,7 +1940,7 @@ function initStage3(map, maplibregl){
       HOOKS.netInterp && HOOKS.netInterp(now, dt);          // гість мережевої гри: стан приходить від господаря
     } else if (!SIM.paused){
       /* perf:v1 — при великому масштабі часу крок ділиться на підкроки ≤ 0,25 с: ракети не «перестрибують» ціль, ППО й РЛС отримують чесний темп */
-      const sdAll = dt * SIM.scale, nSub = Math.min(8, Math.max(1, Math.ceil(sdAll / 0.25))), sd = sdAll / nSub;
+      const sdAll = dt * SIM.scale, nSub = Math.min(BV_PERF.p.sub, Math.max(1, Math.ceil(sdAll / 0.25))), sd = sdAll / nSub;
       for (let k = 0; k < nSub; k++){
         SIM.t += sd;
         while (queue.length && queue[0].t <= SIM.t) queue.shift().fn();
@@ -1952,7 +1956,7 @@ function initStage3(map, maplibregl){
       const usrc = mapReady && map.getSource("units");
       /* на паузі стан не змінюється — перемальовуємо лише раз (і після зміни кількості юнітів / джерела мапи) */
       const still = SIM.paused && pausedDrawn && pausedN === units.size && pausedSrc === usrc;
-      if (usrc && !still && now - lastRender > (units.size > 250 ? 55 : 33)){ lastRender = now; renderUnits(); if (SIM.paused){ pausedDrawn = true; pausedN = units.size; pausedSrc = usrc; } }
+      if (usrc && !still && now - lastRender > BV_PERF.ruMs(units.size)){ lastRender = now; renderUnits(); if (SIM.paused){ pausedDrawn = true; pausedN = units.size; pausedSrc = usrc; } }
     }
     if (impacts.length || impactsShown){ renderImpacts(now); }
     HOOKS.render && HOOKS.render(now);
@@ -1965,7 +1969,7 @@ function initStage3(map, maplibregl){
 
   let shownUnits = false;
   function renderUnits(){
-    const f = [], FOGS = fogSide();
+    const f = [], FOGS = fogSide(), VB = BV_PERF.view(map);      // perf2: відсів поза екраном
     shownUnits = units.size > 0;
     for (const u of units.values()){
       let fv = null; if (FOGS && u.sd && u.sd !== FOGS){ fv = fogUnitSprite(FOGS, u); if (!fv) continue; }      // етап 7.60: туман війни
@@ -2000,6 +2004,7 @@ function initStage3(map, maplibregl){
       // етап 7.9: потяг / вантажівка при наближенні — точно на колії чи дорозі самої мапи
       let at = fv ? fv.pos : u.pos;
       if (!fv && u.kind === "t" && HOOKS.vehPos){ const q = HOOKS.vehPos(u); if (q){ at = q[0]; if (!SIDEVIEW[u.img]) rot = (q[1] - 45 + 360) % 360; } }
+      if (VB && (at[0] < VB[0] || at[0] > VB[2] || at[1] < VB[1] || at[1] > VB[3]) && FOLLOW.id !== u.id) continue;
       f.push({ type: "Feature", properties: { i: u.id, img, rot, sz, c: u.cls, nc: NC(u.sd), so: so || [0, 0], sh: so ? 1 : 0, op, tk: u.key === "tanker" ? 1 : 0 }, geometry: { type: "Point", coordinates: at } });
     }
     map.getSource("units").setData({ type: "FeatureCollection", features: f });
@@ -3325,11 +3330,7 @@ function cityNear(p, r){
   for (const c of CITIES.concat(RU_CITIES, OCC_CITIES)){ const d = hav(p, [c[1], c[2]]); if (d < bd){ bd = d; best = c[0]; } }
   return bd < (r || 25) ? "р-н м. " + best : fmtLL(p);
 }
-function circlePoly(c, km, n){
-  const pts = [], kx = 111.32 * Math.cos(c[1] * D2R), ky = 110.574;
-  for (let i = 0; i <= n; i++){ const a = i / n * 2 * Math.PI; pts.push([c[0] + km / kx * Math.cos(a), c[1] + km / ky * Math.sin(a)]); }
-  return pts;
-}
+function circlePoly(c, km, n){ return BV_PERF.circle(c, km, n, D2R); }      // perf2: кеш (див. 230_perf2.js)
 function moveToward(a, b, km){
   const kx = 111.32 * Math.cos(a[1] * D2R), ky = 110.574;
   const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky, d = Math.hypot(dx, dy) || 1;
@@ -5352,7 +5353,7 @@ function initStage4(map, maplibregl){
   HOOKS.step = adStep;
   HOOKS.render = now => {
     if (!map.getSource("adUnits")) return;
-    if (ADS.dirty && now - lastU > (airUp ? 45 : 120)){ lastU = now; ADS.dirty = false; renderUnitsAD(); }
+    if (ADS.dirty && now - lastU > BV_PERF.adMs(airUp)){ lastU = now; ADS.dirty = false; renderUnitsAD(); }
     fxDraw(now);
     if ((AUTO_AL.on || AUTO_AL.onRu) && !(HOOKS.puppet && HOOKS.puppet()) && now - lastAuto > 500){ lastAuto = now; autoAlertTick(); }
     if (AP.open && now - lastPanel > 300){ lastPanel = now; apLive(); }
@@ -6877,7 +6878,7 @@ function ewVisible(s){
 function ewRender(now){
   telRender(now);
   radarRender(now);                                 // етап 7.55: РЛС
-  const map = S7.map; if (!map || now - EW.rt < 250 && !EW.dirty) return; EW.rt = now;
+  const map = S7.map; if (!map || now - EW.rt < BV_PERF.ewMs() && !EW.dirty) return; EW.rt = now;
   try {
     if (!map.getSource("ewz")){
       if (!map.isStyleLoaded()) return;
@@ -7150,6 +7151,7 @@ function radvisInit(map){
   RADVIS.raf = requestAnimationFrame(loop);
 }
 function radvisDraw(now){
+  if (BV_PERF.skip("rv", now)) return;
   const V = RADVIS, g = V.g, sim = RAD.sim, map = S7.map; if (!g || !map || !FX.map) return;
   if (!sim || !sim.stations.length){ if (!V.empty){ g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, V.c.width, V.c.height); V.empty = true; } return; }
   V.empty = false;
@@ -7168,7 +7170,7 @@ function radvisDraw(now){
     const { st, m, bm, x, y, R, az } = r; if (!bm.active || !(R > 6)) continue;
     const col = m.side === "ua" ? "34,195,230" : "255,107,107", ac = az - Math.PI / 2;
     if (bm.mode === "sweep"){
-      const trail = 0.85, N = 16;                                   // шлейф ≈ 49° з плавним згасанням
+      const trail = 0.85, N = BV_PERF.p.trail;                                   // шлейф ≈ 49° з плавним згасанням
       for (let i = 0; i < N; i++){
         const f = 1 - i / N; g.fillStyle = `rgba(${col},${(0.2 * f * f).toFixed(3)})`;
         g.beginPath(); g.moveTo(x, y); g.arc(x, y, R, ac - trail * (i + 1) / N, ac - trail * i / N); g.closePath(); g.fill();
@@ -7762,6 +7764,7 @@ function fogvisInit(map){
 }
 function fogDiamond(g, x, y, r){ g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r, y); g.lineTo(x, y + r); g.lineTo(x - r, y); g.closePath(); }
 function fogvisDraw(now){
+  if (BV_PERF.skip("fg", now)) return;
   const g = FOG.g, map = S7.map; if (!g || !map) return;
   const fs = fogSide(), V = FOG;
   g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, V.c.width, V.c.height); V.hit = [];
@@ -16119,7 +16122,7 @@ body.tping-on #map,body.tping-on .maplibregl-canvas{cursor:crosshair!important}`
     if (!p || !Array.isArray(p.pos)) return;
     CPX.pings = CPX.pings.filter(x => x.id !== p.id || x.side !== p.side); CPX.pings.push({ id: p.id, side: p.side, name: p.name || "?", pos: p.pos, k: p.k, ttl: Math.max(3, p.left || 30), t0: performance.now() });
     pingLayer(); pingDraw();
-    if (!CPX.anim) CPX.anim = setInterval(() => { pingPrune(); if (CPX.pings.length) pingDraw(); }, 140);
+    if (!CPX.anim) CPX.anim = BV_PERF.ui(() => { pingPrune(); if (CPX.pings.length) pingDraw(); }, 140);
   }
   let pingHooked = false;
   function pingHook(){
@@ -18436,6 +18439,20 @@ const BC_ICO = {
 queueMicrotask(() => { window.BV_SHOP = S7.shop; });      /* shop v2: міст для 170_shop_v2.js */
 window.BV_DIPX = { HOOKS: () => HOOKS, toast: (m, k) => toast(m, k), ecoE: sd => ecoE(sd), ecoAdd: (sd, p, d) => ecoAdd(sd, p, d), endBy: o => endBy(o), PKEY: () => PKEY };      /* diplomacy:bridge */
 window.BV_DIPX.airReset = () => safeCache.clear();      /* dip:airbridge */
+window.BV_DIPX.seaShips = () => {      /* dip:seabridge — реальні кораблі й танкери в морі (для журналу суден BV_SEA) */
+  const out = [];
+  try { for (const u of shipsAtSea()) out.push({ id: u.id, kind: u.kind, key: u.key, sd: u.sd || "ru", pos: u.pos, base: (u.meta && u.meta.base) || "", load: (u.meta && u.meta.load) || 0, w: (u.meta && u.meta.w) || "" }); } catch (e) { /* */ }
+  return out;
+};
+window.BV_DIPX.foreignGrid = () => gridInit(FOREIGN);      /* dip:airbridge2 — сітка суші інших країн для карти неба */
+window.BV_DIPX.airUnits = () => {      /* dip:airbridge2 — літаки в небі (ударні носії, винищувачі, ДРЛО) для монітора польотів */
+  const out = [];
+  try {
+    for (const u of units.values()){ if (u.kind !== "c" || u.fall || u.wait > 0 || !u.pos) continue; const C = CARRIERS[u.key]; if (!C || C.kind !== "air") continue; out.push({ id: "c" + u.id, side: u.sd || "ru", name: C.n || u.key, pos: u.pos, op: "strike", phase: (u.meta && u.meta.phase) || "" }); }
+    for (const a of ADS.units.values()){ const T = AD_TYPES[a.key]; if (!T || !T.air || a.state === "base" || a.state === "reload" || !a.pos) continue; out.push({ id: "f" + a.id, side: acSd(a), name: T.n || a.key, pos: a.pos, op: T.aew ? "recon" : "cap", phase: a.state || "" }); }
+  } catch (e) { /* */ }
+  return out;
+};
 S7.shop = { sync: bcBalSync, ICO: BC_ICO, levelUp: bcLevelUp, upCard: bcUpCard, open: bcOpen, close: bcClose, topup: bcTopup, isOpen: () => BS.open, battle: bcBattle, resCard: bcResCard, coin: BC_COIN, bal: bcBal,
             ITEMS: BC_ITEMS, BOX: BC_BOX, locked: bcLocked, sort: bcSort, openBox: bcOpenBox, state: BS, model: ctModel, fight: bcFight,
             buy: id => { const it = BC_ITEMS[id]; if (!it || bcOwned(it) || PROF.bc < it.price || bcFight()) return false; PROF.bc -= it.price; PROF.own.push(id); saveProf(); return true; } };
@@ -19047,7 +19064,7 @@ function cameraFor(b, extra){
 function pulseFront(map){
   let last = 0;
   const tick = t => {
-    if (t - last > 80 && !S7.quiet) {      // під час екрана результатів мапа прихована — без пульсації (менше навантаження)
+    if (BV_PERF.pulseDue(t - last) && !S7.quiet) {      // під час екрана результатів мапа прихована — без пульсації (менше навантаження)
       last = t;
       const k = 0.5 + 0.5 * Math.sin(t / 650);
       if (map.getLayer("front-glow") && map.getLayoutProperty("front-glow", "visibility") !== "none")

@@ -212,5 +212,5 @@
     }
   }
   const m0 = map(); if (m0 && m0.on) { try { m0.on("move", drawSvg); } catch (_) {} }
-  setInterval(drawSvg, 500);
+  (window.BV_PERF ? BV_PERF.ui(drawSvg, 500) : setInterval(drawSvg, 500));
 })();

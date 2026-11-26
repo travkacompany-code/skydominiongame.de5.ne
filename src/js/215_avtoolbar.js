@@ -51,6 +51,6 @@
   new MutationObserver(schedule).observe(adp, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
   rt.addEventListener("click", () => setTimeout(schedule, 0));
   mseld.addEventListener("click", schedule);
-  setInterval(schedule, 600);
+  (window.BV_PERF ? BV_PERF.ui(schedule, 600) : setInterval(schedule, 600));
   schedule();
 })();

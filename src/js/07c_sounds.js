@@ -168,5 +168,5 @@ window.BV_SOUNDS = {
   bufs: () => Object.keys(ST.bufs), menuPlaying: () => !!(ST.menu && !ST.menu.paused), cands: () => cands().length
 };
 if (!window.BV_SND_HOOK) warn("немає BV_SND_HOOK (03_game.js не містить містка)");
-else decodeAll().then(() => { install(window.BV_SND_HOOK); setInterval(tick, 150); tick(); });
+else decodeAll().then(() => { install(window.BV_SND_HOOK); (window.BV_PERF ? BV_PERF.ui(tick, 150) : setInterval(tick, 150)); tick(); });
 })();

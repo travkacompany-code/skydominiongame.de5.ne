@@ -51,6 +51,6 @@
     }
     box.appendChild(list);
   }
-  setInterval(render, 500);
+  (window.BV_PERF ? BV_PERF.ui(render, 500) : setInterval(render, 500));
   render();
 })();
