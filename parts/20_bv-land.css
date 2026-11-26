@@ -1,0 +1,32 @@
+
+/* SKYDOMINION · 224 · горизонтальний вид на телефоні (альбомна орієнтація).
+   Лише коли висота екрана мала (альбом): панель ППО — збоку на весь висоту, список систем видно,
+   індикатор координат і кнопка техніки не перекриваються панеллю. Портрет не змінюється. */
+@media (orientation: landscape) and (max-height: 520px){
+  html body #adp.open.open.open{position:fixed!important;top:calc(80px + env(safe-area-inset-top,0px))!important;bottom:8px!important;right:8px!important;left:auto!important;
+    width:min(46vw,440px)!important;max-height:calc(100dvh - 16px)!important;height:auto!important;
+    display:flex!important;flex-direction:column;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:6px}
+  html body #adp.open.open.open > *{flex-shrink:0}
+  html body #adp.open.open.open > #adBody{flex-shrink:1!important}
+  html body #adp.open.open.open #adBody{flex:1 1 0!important;min-height:60px!important;max-height:none;overflow-y:auto!important;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  html body #adp.open.open.open .lp-foot .lp-hint,html body #adp.open.open.open .lp-foot small{display:none}
+  html body #adp.open.open.open .lp-weap{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px}
+  html body #adp.open.open.open .lp-weap .wcard,html body #adp.open.open.open .wcard{min-height:74px}
+  html body #adp.open.open.open .lp-foot{flex:0 0 auto;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px))}
+  html body #adp.open.open.open .lp-foot button{min-height:44px}
+  html body #adp.open.open.open .lp-head,html body #adp.open.open.open > .lp-h{padding:6px 10px}
+  /* плаваючі елементи мапи — поза панеллю */
+  body:has(#adp.open) #coords{right:calc(min(46vw,440px) + 18px)!important;left:auto!important;transform:none!important}
+  body:has(#adp.open) #qkToggle{right:calc(min(46vw,440px) + 18px)!important;bottom:12px!important}
+  body:has(#adp.open) #qkBar{right:calc(min(46vw,440px) + 18px)!important;bottom:62px!important}
+  body:has(#adp.open) #mselBtn,body:has(#adp.open) #rtBtn{display:none}
+}
+/* підказка «поверніть телефон» у портреті */
+#rotHint{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;
+  background:radial-gradient(ellipse at 50% 40%,rgba(14,34,64,.97),rgba(4,8,16,.99));color:#dbe7ff;text-align:center;font-size:15px;line-height:1.4}
+#rotHint.on{display:flex}
+#rotHint .rh-ic{width:64px;height:64px;border:2px solid #4cc3ff;border-radius:12px;position:relative;transform:rotate(0deg);animation:rhTurn 2.4s ease-in-out infinite}
+#rotHint .rh-ic::after{content:"";position:absolute;inset:6px 10px;border:1px solid rgba(76,195,255,.4);border-radius:4px}
+#rotHint b{font-size:17px;letter-spacing:.04em;color:#ffc53d}
+#rotHint button{min-height:46px;padding:8px 18px;background:rgba(47,140,255,.12);border:1px solid #4cc3ff;color:#dbe7ff;border-radius:4px;font:inherit;font-size:14px;cursor:pointer}
+@keyframes rhTurn{0%,20%{transform:rotate(0deg)}60%,100%{transform:rotate(90deg)}}

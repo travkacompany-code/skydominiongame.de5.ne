@@ -1,0 +1,31 @@
+/* етап 7.66 — мобільні пускові установки балістики (BV2: navy + синій + золото) */
+.tel-fab{position:fixed;z-index:30;left:calc(10px + env(safe-area-inset-left,0px));top:calc(132px + env(safe-area-inset-top,0px));min-width:46px;height:38px;padding:0 12px;border-radius:14px;border:1px solid rgba(88,150,255,.45);background:rgba(5,11,24,.9);color:#cfe3ff;font:800 italic 13px/1 "Exo 2",system-ui,sans-serif;letter-spacing:.08em;cursor:pointer;backdrop-filter:blur(6px)}
+.tel-fab:hover,.tel-fab.on{border-color:#ffc53d;color:#ffc53d;box-shadow:0 0 14px rgba(255,197,61,.25)}
+.tel-panel{position:fixed;z-index:31;left:calc(10px + env(safe-area-inset-left,0px));top:calc(176px + env(safe-area-inset-top,0px));width:min(360px,calc(100vw - 24px));max-height:calc(100vh - 230px);overflow:auto;padding:10px 12px 12px;border-radius:14px;border:1px solid rgba(88,150,255,.35);background:rgba(5,11,24,.95);color:#dbe8ff;font:500 12.5px/1.35 "Exo 2",system-ui,sans-serif;backdrop-filter:blur(8px);box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.tel-h{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.tel-h b{flex:1;font:800 italic 13px/1.2 "Exo 2",sans-serif;text-transform:uppercase;letter-spacing:.06em;color:#4cc3ff}
+.tel-x{border:0;background:none;color:#9db6dd;font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
+.tel-x:hover{color:#ffc53d}
+.tel-chip{border:1px solid rgba(88,150,255,.35);background:transparent;color:#9db6dd;border-radius:10px;padding:3px 8px;font:700 11px "Exo 2",sans-serif;cursor:pointer}
+.tel-chip.on{border-color:#ffc53d;color:#ffc53d}
+.tel-note{margin:4px 0 6px;color:#8aa3cc;font-size:11.5px}
+.tel-sec{margin:10px 0 4px;font:800 11px "Exo 2",sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#6f8fc4;border-top:1px solid rgba(88,150,255,.18);padding-top:7px}
+.tel-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0}
+.tel-row .tn{display:block;flex:1;min-width:0;font-weight:700;color:#e6f0ff}
+.tel-row .tn small{display:block;font-weight:500;color:#8aa3cc;font-size:11px;margin-top:1px}
+.tel-ops{display:flex;gap:4px}
+.tel-b{border:1px solid rgba(88,150,255,.45);background:rgba(47,140,255,.1);color:#cfe3ff;border-radius:10px;min-width:30px;padding:5px 9px;font:700 12px "Exo 2",sans-serif;cursor:pointer}
+.tel-b:hover{border-color:#ffc53d;color:#ffc53d}
+.tel-b.on{background:#ffc53d;border-color:#ffc53d;color:#10141f}
+.tel-b[disabled]{opacity:.35;cursor:default;border-color:rgba(88,150,255,.2);color:#8aa3cc}
+.tel-bar{display:block;height:4px;margin-top:4px;border-radius:2px;background:rgba(88,150,255,.18);overflow:hidden}
+.tel-bar i{display:block;height:100%;border-radius:2px;transition:width .4s}
+.tel-pop{position:fixed;z-index:32;right:calc(12px + env(safe-area-inset-right,0px));top:calc(84px + env(safe-area-inset-top,0px));width:min(300px,calc(100vw - 24px));padding:10px 12px;border-radius:14px;border:1px solid rgba(88,150,255,.4);background:rgba(5,11,24,.96);color:#dbe8ff;font:500 12.5px/1.4 "Exo 2",system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.tel-pop small{color:#8aa3cc}
+.tel-btns{display:flex;gap:6px;margin-top:8px}
+.tel-btns button{border:1px solid rgba(88,150,255,.45);background:rgba(47,140,255,.1);color:#cfe3ff;border-radius:10px;padding:5px 10px;font:700 12px "Exo 2",sans-serif;cursor:pointer}
+.tel-btns button:hover{border-color:#ffc53d;color:#ffc53d}
+.tel-btns button:last-child{margin-left:auto}
+.tel-pickbar{position:fixed;z-index:33;left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:10px;max-width:calc(100vw - 24px);padding:9px 12px;border-radius:14px;border:1px solid #ffc53d;background:rgba(5,11,24,.96);color:#ffe9a8;font:700 12.5px "Exo 2",sans-serif;box-shadow:0 8px 26px rgba(0,0,0,.5)}
+.tel-pickbar button{border:1px solid rgba(255,197,61,.6);background:transparent;color:#ffc53d;border-radius:10px;padding:4px 10px;font:700 12px "Exo 2",sans-serif;cursor:pointer}
+@media (max-width:640px){.tel-fab{top:calc(120px + env(safe-area-inset-top,0px))}.tel-panel{top:calc(164px + env(safe-area-inset-top,0px));max-height:calc(100vh - 250px)}}

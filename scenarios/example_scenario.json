@@ -1,0 +1,17 @@
+{
+  "format": "skydominion.scenario",
+  "formatVersion": 1,
+  "id": "demo_scn",
+  "title": "Демо: одна хибна ціль",
+  "description": "Мінімальний сценарій для перевірки формату. Використовує контент мода example.",
+  "seed": 12345,
+  "tickSec": 1,
+  "requires": ["example"],
+  "bounds": [22, 44, 40, 53],
+  "countries": ["example:bravo"],
+  "sides": [{ "side": "ua", "country": "example:bravo" }],
+  "placements": [
+    { "id": "p1", "unit": "example:decoy", "side": "ua", "lon": 30.5, "lat": 50.4 }
+  ],
+  "events": [{ "at": 60, "event": "example:alarm" }]
+}

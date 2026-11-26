@@ -1,0 +1,26 @@
+
+/* SKYDOMINION · 180 · швидкий доступ — іконка-перемикач (стиль кнопок мапи, BV2 AAA). */
+#qkToggle{position:fixed;right:14px;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:61;
+  width:42px;height:42px;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;
+  background:linear-gradient(180deg,rgba(14,26,46,.94),rgba(8,15,30,.94));border:1px solid rgba(88,150,255,.45);
+  color:#dbe7ff;border-radius:3px;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+#qkToggle[hidden]{display:none}
+#qkToggle:hover,#qkToggle:focus-visible{outline:none;border-color:#4cc3ff}
+#qkToggle.on{border-color:#ffc53d;color:#ffc53d;box-shadow:inset 0 0 0 1px #ffc53d}
+#qkToggle svg{fill:none;stroke:currentColor;stroke-width:1.8}
+#qkToggle .qk-n{position:absolute;right:-5px;top:-5px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;
+  background:#ffc53d;color:#0b1220;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+#qkBar{position:fixed;right:14px;bottom:calc(110px + env(safe-area-inset-bottom,0px));z-index:62;
+  display:none;flex-direction:column;gap:6px;width:min(88vw,260px);max-height:55vh;overflow:auto;padding:8px;
+  background:linear-gradient(180deg,rgba(14,26,46,.97),rgba(8,15,30,.97));border:1px solid rgba(88,150,255,.5);
+  border-radius:4px;box-shadow:0 10px 24px rgba(0,0,0,.55)}
+#qkBar.open{display:flex}
+#qkBar[hidden]{display:none}
+#qkBar .qk-u{display:block;width:100%;min-height:44px;padding:6px 10px;text-align:left;cursor:pointer;
+  background:rgba(47,140,255,.08);border:1px solid rgba(88,150,255,.35);color:#dbe7ff;border-radius:3px;font:inherit}
+#qkBar .qk-u:hover,#qkBar .qk-u:focus-visible{border-color:#4cc3ff;outline:none;background:rgba(47,140,255,.2)}
+#qkBar .qk-u.on{border-color:#ffc53d;box-shadow:inset 0 0 0 1px #ffc53d;background:rgba(255,197,61,.12)}
+#qkBar .qk-u.grp{border-color:#ffc53d}
+#qkBar .qk-u b{display:block;font-size:13px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#qkBar .qk-u small{display:block;margin-top:2px;font-size:11px;color:#8fb0e0;white-space:nowrap}
+#qkBar .qk-u.on small{color:#ffc53d}

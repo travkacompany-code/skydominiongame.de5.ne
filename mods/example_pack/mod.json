@@ -1,0 +1,28 @@
+{
+  "id": "example",
+  "version": "1.0.0",
+  "title": "Приклад: пакет контенту",
+  "description": "Демонстрація формату мода: лише дані, префікс імен example:, без коду.",
+  "author": "SKYDOMINION core",
+  "api": 1,
+  "deps": [],
+  "overrides": [],
+  "content": {
+    "country": [
+      { "id": "example:bravo", "name": "Бравія (приклад)", "side": "other", "neighbors": [], "tags": ["example"] }
+    ],
+    "unit": [
+      { "id": "example:decoy", "name": "Хибна ціль (приклад)", "class": "air", "cost": 1200, "speed": 300, "tags": ["decoy"] }
+    ],
+    "event": [
+      { "id": "example:alarm", "name": "Тривога (приклад)", "trigger": "time", "at": 60, "once": true,
+        "effects": [{ "type": "alert", "level": 2 }] }
+    ],
+    "mechanic": [
+      { "id": "example:fog_bonus", "name": "Бонус тумана (приклад)", "enabled": true, "params": { "radiusKm": 40 } }
+    ],
+    "scenario": [
+      { "id": "example:demo", "title": "Демо-сценарій", "description": "Приклад каталогу сценаріїв" }
+    ]
+  }
+}

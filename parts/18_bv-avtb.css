@@ -1,0 +1,44 @@
+
+/* SKYDOMINION · 215 · вбудований рядок інструментів авіації ПВО (усередині #adp, не поверх гри). */
+#avWrap{display:block;margin:6px 0 8px;padding:6px;border:1px solid rgba(88,150,255,.25);border-radius:4px;background:rgba(8,15,30,.5)}
+#avWrap[hidden]{display:none}
+#avToolbar{display:flex;flex-wrap:wrap;gap:6px}
+#avToolbar[hidden]{display:none}
+#avToolbar #mselBtn,#avToolbar #rtBtn{position:static;left:auto;right:auto;top:auto;bottom:auto;z-index:auto;min-height:36px;padding:6px 10px}
+#avBody{margin-top:6px}
+#avBody[hidden]{display:none}
+#avBody #rtPanel{position:static;left:auto;top:auto;width:auto;max-height:none;overflow:visible;box-shadow:none;border:0;background:transparent;padding:0}
+#avBody #rtPanel[hidden]{display:none}
+#avBody #rtPanel .rt-h{display:none}
+/* кнопки не показуються плаваючими: поки не перенесені в панель — приховані */
+body > #mselBtn,body > #rtBtn{display:none}
+#avToolbar #mselBtn,#avToolbar #rtBtn{display:inline-flex}
+/* зведення командного пункту (216) — усередині панелі ППО */
+#avCP{margin-bottom:6px;padding:6px 8px;border:1px solid rgba(88,150,255,.3);border-radius:3px;background:rgba(5,11,24,.55);color:#dbe7ff;font-size:12px}
+#avCP[hidden]{display:none}
+#avCP .cp-h b{display:block;font-size:13px;letter-spacing:.03em}
+#avCP .cp-h small{display:block;color:#8fb0e0;font-size:11px;margin-top:2px}
+#avCP .cp-t{margin:6px 0;color:#ffc53d;font-size:11px}
+#avCP .cp-e{color:#8fb0e0;line-height:1.4}
+#avCP .cp-l{display:flex;flex-wrap:wrap;gap:6px}
+#avCP .cp-u{min-height:34px;padding:4px 8px;background:rgba(47,140,255,.08);border:1px solid rgba(88,150,255,.35);color:#dbe7ff;border-radius:3px;font:inherit;font-size:11px;cursor:pointer}
+#avCP .cp-u:hover,#avCP .cp-u:focus-visible{outline:none;border-color:#4cc3ff}
+#avCP .cp-u.on{border-color:#ffc53d;color:#ffc53d}
+/* виробництво боєкомплекту (219) — блок у панелі ППО */
+#avProd{margin-top:8px;padding:6px 8px;border:1px solid rgba(88,150,255,.3);border-radius:3px;background:rgba(5,11,24,.55);color:#dbe7ff;font-size:12px}
+#avProd[hidden]{display:none}
+#avProd .pd-h{font-size:13px;letter-spacing:.03em;margin-bottom:4px}
+#avProd .pd-s{display:flex;flex-wrap:wrap;gap:6px 10px;color:#8fb0e0;font-size:11px}
+#avProd .pd-c{white-space:nowrap}
+#avProd .pd-go{margin-top:8px;min-height:36px;width:100%;padding:6px 8px;background:rgba(255,197,61,.1);border:1px solid #ffc53d;color:#ffc53d;border-radius:3px;font:inherit;font-size:12px;cursor:pointer}
+#avProd .pd-go:disabled{opacity:.4;cursor:default}
+#avProd .pd-h2{color:#8fb0e0;margin-top:4px;font-size:11px}
+/* логістика: список конвоїв (220) */
+#avProd .pd-l{margin-top:6px;display:flex;flex-direction:column;gap:3px}
+#avProd .pd-r{font-size:11px;color:#8fb0e0}
+#avProd .pd-r.bad{color:#ff9a8f}
+/* згортка допоміжних блоків авіації: за замовчуванням згорнуто (лише рядок «Інструменти») */
+#avFold{display:block;width:100%;min-height:32px;padding:4px 8px;text-align:left;background:rgba(47,140,255,.08);border:1px solid rgba(88,150,255,.35);color:#dbe7ff;border-radius:3px;font:inherit;font-size:12px;letter-spacing:.03em;cursor:pointer}
+#avFold:hover,#avFold:focus-visible{outline:none;border-color:#4cc3ff}
+#avWrap{margin:6px 0 8px;padding:4px 6px;background:transparent;border:0}
+#avWrap.fold > :not(#avFold){display:none!important}

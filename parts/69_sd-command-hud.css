@@ -1,0 +1,109 @@
+
+/* SKYDOMINION · ІГРОВИЙ HUD · Modern Military Command Center (шар поверх існуючих стилів).
+   Лише подання: розмітка, id/класи, обробники й логіка не змінюються. */
+
+@keyframes cmdIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes cmdInL{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes cmdInR{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
+@keyframes cmdUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes cmdPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.55)}70%{box-shadow:0 0 0 7px rgba(255,59,48,0)}}
+@keyframes cmdScan{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+:root{
+  --cmd-bg:rgba(5,13,30,.86);
+  --cmd-bg2:rgba(8,20,44,.92);
+  --cmd-blue:#2f8cff;
+  --cmd-neon:#4cc3ff;
+  --cmd-red:#ff3b30;
+  --cmd-gold:#ffc53d;
+  --cmd-line:rgba(76,160,255,.34);
+  --cmd-text:#e8f1ff;
+  --cmd-dim:#8ea6c8;
+}
+
+/* верхня панель: сцена, час, рахунок, пауза */
+html body #gmBar.panel{
+  top:6px;left:8px;right:8px;height:46px;padding:0 10px;
+  background:linear-gradient(90deg,rgba(6,16,36,.94),rgba(8,22,48,.9) 50%,rgba(6,16,36,.94));
+  border:1px solid var(--cmd-line);
+  clip-path:polygon(12px 0,calc(100% - 12px) 0,100% 12px,100% calc(100% - 12px),calc(100% - 12px) 100%,12px 100%,0 calc(100% - 12px),0 12px);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),0 6px 22px rgba(0,0,0,.45);
+  animation:cmdIn .5s cubic-bezier(.2,.7,.2,1) both;
+}
+html body #gmBar.panel::before{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,transparent,var(--cmd-blue) 25%,var(--cmd-gold) 55%,var(--cmd-red) 85%,transparent);opacity:.85;pointer-events:none}
+html body #gmBar.panel::after{content:"";position:absolute;top:0;bottom:0;width:120px;left:0;background:linear-gradient(90deg,transparent,rgba(76,195,255,.12),transparent);animation:cmdScan 6s linear infinite;pointer-events:none}
+html body #gmBar .gm-title,html body #gmBar b{color:var(--cmd-neon);font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+html body #gmBar small,html body #gmBar .sub{color:var(--cmd-dim);letter-spacing:.04em}
+
+/* ліва навігація (док) */
+html body #hudDock{
+  top:88px;left:8px;padding:8px 6px;gap:6px;
+  background:var(--cmd-bg);border:1px solid var(--cmd-line);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+  animation:cmdInL .55s cubic-bezier(.2,.7,.2,1) both;
+}
+html body #hudDockFold{
+  background:var(--cmd-bg);border:1px solid var(--cmd-line);color:var(--cmd-neon);
+  transition:background .25s,border-color .25s,transform .25s;
+}
+html body #hudDockFold:hover{border-color:var(--cmd-gold);color:var(--cmd-gold)}
+
+/* правий стовпець керування картою */
+html body #controls.hud{
+  right:8px;top:56px;padding:6px;gap:6px;
+  background:var(--cmd-bg);border:1px solid var(--cmd-line);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+  animation:cmdInR .55s cubic-bezier(.2,.7,.2,1) both;
+}
+
+/* кнопки: спільний HUD-стиль з неоновим ободом */
+html body #controls .btn,html body #hudDock .hr-b,html body #hudDock button,html body #audioBtn,html body #airZb,html body #seaZb{
+  transition:transform .2s ease,background .2s ease,box-shadow .2s ease,color .2s ease,border-color .2s ease;
+}
+html body #controls .btn:hover,html body #hudDock button:hover,html body #audioBtn:hover,html body #airZb:hover,html body #seaZb:hover{
+  color:var(--cmd-gold);border-color:rgba(255,197,61,.7);box-shadow:0 0 14px rgba(255,197,61,.25);transform:translateY(-1px);
+}
+html body #controls .btn:active,html body #hudDock button:active{transform:scale(.94)}
+html body #controls .btn:focus-visible,html body #hudDock button:focus-visible,html body #gmBar button:focus-visible{outline:2px solid var(--cmd-gold);outline-offset:2px}
+html body #controls .btn.on,html body #hudDock .on,html body #hudDock [aria-pressed="true"]{color:var(--cmd-gold);border-color:rgba(255,197,61,.8);box-shadow:inset 0 0 12px rgba(255,197,61,.2)}
+
+/* журнал подій: нижній компактний стрічковий блок */
+html body #hudLog{
+  left:50%;transform:translateX(-50%);bottom:10px;width:min(720px,calc(100vw - 24px));
+  background:var(--cmd-bg);border:1px solid var(--cmd-line);
+  clip-path:polygon(12px 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%,0 12px);
+  box-shadow:0 -4px 22px rgba(0,0,0,.4);
+  animation:cmdUp .6s cubic-bezier(.2,.7,.2,1) .15s both;
+}
+html body #hudLog::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--cmd-red) 30%,var(--cmd-blue) 70%,transparent);opacity:.8}
+html body #hudLog .lg-t,html body #hudLog b{color:var(--cmd-gold);letter-spacing:.08em;font-weight:800}
+html body #hudLog .lg-txt,html body #hudLog span{color:var(--cmd-text)}
+
+/* слої карти */
+html body #layers.hud.panel{
+  background:var(--cmd-bg2);border:1px solid var(--cmd-line);
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);
+  box-shadow:0 14px 34px rgba(0,0,0,.55);
+  animation:cmdIn .3s ease both;
+}
+html body #layers h4{color:var(--cmd-neon);letter-spacing:.1em;text-transform:uppercase;font-size:11px}
+
+/* мобільні: компактний док і кнопки керування, журнал зверху від нижньої панелі */
+@media (max-width:899px){
+  html body #gmBar.panel{top:4px;left:4px;right:4px;height:40px;padding:0 6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  html body #gmBar.panel::-webkit-scrollbar{display:none}
+  html body #hudDock{top:52px;left:4px;padding:6px 4px;gap:4px}
+  html body #hudLog{bottom:6px;width:calc(100vw - 12px);font-size:12px}
+}
+@media (max-width:560px){
+  html body #controls .btn{width:40px;height:40px}
+  html body #hudDock button{width:38px;height:38px}
+}
+
+/* зменшена анімація, якщо користувач цього хоче; швидкодія: без анімацій на фоні */
+@media (prefers-reduced-motion:reduce){
+  html body #gmBar.panel::after{animation:none}
+}
+

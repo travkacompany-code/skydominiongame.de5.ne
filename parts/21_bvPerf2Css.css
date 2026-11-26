@@ -1,0 +1,101 @@
+
+/* SKYDOMINION · 230 · PERF2 — стилі слабких рівнів (data-perf на <html>: 0 ultra … 4 potato).
+   Рівень ≥2: прибираємо backdrop-filter (найдорожче для GPU телефонів).
+   Рівень ≥3: майже миттєві transition, без blur-фільтрів і нескінченних декоративних анімацій (див. згенеровану частину нижче).
+   Рівень 4: найпростіше оформлення тіней вікон. Лоадер не чіпаємо. */
+html[data-perf="2"] *, html[data-perf="3"] *, html[data-perf="4"] *,
+html[data-perf="2"] *::before, html[data-perf="3"] *::before, html[data-perf="4"] *::before,
+html[data-perf="2"] *::after, html[data-perf="3"] *::after, html[data-perf="4"] *::after {
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+html[data-perf="3"] *:not(#loader):not(#loader *), html[data-perf="4"] *:not(#loader):not(#loader *),
+html[data-perf="3"] *::before, html[data-perf="4"] *::before, html[data-perf="3"] *::after, html[data-perf="4"] *::after {
+  transition-duration: .01ms !important; transition-delay: 0s !important; scroll-behavior: auto !important;
+}
+html[data-perf="4"] .panel, html[data-perf="4"] #toast, html[data-perf="4"] #s7mdl, html[data-perf="4"] .bv-pop .maplibregl-popup-content {
+  box-shadow: 0 1px 3px rgba(0,0,0,.5) !important; text-shadow: none !important;
+}
+/* лічильник FPS (?fps=1) */
+#perfMeter { position: fixed; pointer-events: none; }
+
+/* ---- згенеровано tools/apply_perf2.py з CSS збірки: blur-фільтри (рівні ≥3) і нескінченні анімації (рівні ≥3) ---- */
+html[data-perf="3"] .ct-dust i,
+html[data-perf="4"] .ct-dust i,
+html[data-perf="3"] .ct-sh,
+html[data-perf="4"] .ct-sh,
+html[data-perf="3"] .sx-fx.fire i,
+html[data-perf="4"] .sx-fx.fire i{filter:none!important}
+html[data-perf="3"] #followBar .fb-dot,
+html[data-perf="4"] #followBar .fb-dot,
+html[data-perf="3"] #gmBar .chip.hot,
+html[data-perf="4"] #gmBar .chip.hot,
+html[data-perf="3"] #gmBar .gb-l::after,
+html[data-perf="4"] #gmBar .gb-l::after,
+html[data-perf="3"] #mmScroll[data-scr="main"] .mbtn[data-v="online"],
+html[data-perf="4"] #mmScroll[data-scr="main"] .mbtn[data-v="online"],
+html[data-perf="3"] #rotHint .rh-ic,
+html[data-perf="4"] #rotHint .rh-ic,
+html[data-perf="3"] #s7menu::after,
+html[data-perf="4"] #s7menu::after,
+html[data-perf="3"] #status .dot,
+html[data-perf="4"] #status .dot,
+html[data-perf="3"] .bv2-map .front,
+html[data-perf="4"] .bv2-map .front,
+html[data-perf="3"] .bv2c-live b,
+html[data-perf="4"] .bv2c-live b,
+html[data-perf="3"] .chip.hot,
+html[data-perf="4"] .chip.hot,
+html[data-perf="3"] .fb-dot,
+html[data-perf="4"] .fb-dot,
+html[data-perf="3"] .lp-go::before,
+html[data-perf="4"] .lp-go::before,
+html[data-perf="3"] .lp-go:not(:disabled),
+html[data-perf="4"] .lp-go:not(:disabled),
+html[data-perf="3"] .lp-go:not(:disabled)::after,
+html[data-perf="4"] .lp-go:not(:disabled)::after,
+html[data-perf="3"] .mbig,
+html[data-perf="4"] .mbig,
+html[data-perf="3"] .mbig::after,
+html[data-perf="4"] .mbig::after,
+html[data-perf="3"] .mm-me::after,
+html[data-perf="4"] .mm-me::after,
+html[data-perf="3"] .mm-right::after,
+html[data-perf="4"] .mm-right::after,
+html[data-perf="3"] .mm-right::before,
+html[data-perf="4"] .mm-right::before,
+html[data-perf="3"] .mm-title .t1,
+html[data-perf="4"] .mm-title .t1{animation:none!important}
+html[data-perf="3"] .pbar i::after,
+html[data-perf="4"] .pbar i::after,
+html[data-perf="3"] .s7b.big:not(:disabled)::after,
+html[data-perf="4"] .s7b.big:not(:disabled)::after,
+html[data-perf="3"] .sx-b.strike.armed,
+html[data-perf="4"] .sx-b.strike.armed,
+html[data-perf="3"] .sx-flt img,
+html[data-perf="4"] .sx-flt img,
+html[data-perf="3"] .sx-fx.fire i,
+html[data-perf="4"] .sx-fx.fire i,
+html[data-perf="3"] .sx-jobs i,
+html[data-perf="4"] .sx-jobs i,
+html[data-perf="3"] .sx-m.burn .sx-ic,
+html[data-perf="4"] .sx-m.burn .sx-ic,
+html[data-perf="3"] .sx-m.hos:not(.ghost) .sx-ic::after,
+html[data-perf="4"] .sx-m.hos:not(.ghost) .sx-ic::after,
+html[data-perf="3"] .sx-m.susp .sx-ic,
+html[data-perf="4"] .sx-m.susp .sx-ic,
+html[data-perf="3"] body #bcShop .bc-bg::after,
+html[data-perf="4"] body #bcShop .bc-bg::after,
+html[data-perf="3"] body #bcShop .bc-tabs em,
+html[data-perf="4"] body #bcShop .bc-tabs em,
+html[data-perf="3"] body #s7menu #mmScroll .mm-acts-in .nf-primary::after,
+html[data-perf="4"] body #s7menu #mmScroll .mm-acts-in .nf-primary::after,
+html[data-perf="3"] body #s7menu #mmScroll .nf-radar,
+html[data-perf="4"] body #s7menu #mmScroll .nf-radar,
+html[data-perf="3"] body #s7menu #mmScroll .nf-uplink .ndot::after,
+html[data-perf="4"] body #s7menu #mmScroll .nf-uplink .ndot::after,
+html[data-perf="3"] body #s7menu #mmScroll .room-card[data-st="game"] .nf-pill::before,
+html[data-perf="4"] body #s7menu #mmScroll .room-card[data-st="game"] .nf-pill::before,
+html[data-perf="3"] body #s7menu #mmScroll .s7b.big[data-s7="rstart"]:not([disabled]),
+html[data-perf="4"] body #s7menu #mmScroll .s7b.big[data-s7="rstart"]:not([disabled]),
+html[data-perf="3"] body #s7menu.bv2m #mmScroll .nf-team .slot:not(.ua):not(.ru) .pi small,
+html[data-perf="4"] body #s7menu.bv2m #mmScroll .nf-team .slot:not(.ua):not(.ru) .pi small{animation:none!important}

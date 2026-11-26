@@ -1,0 +1,110 @@
+
+/* SKYDOMINION · 174 · Drag & Drop карток (ПВО, РЛС/РЕБ, авіація, ракети, мобільні ПУ)
+   Лише оформлення «привида» картки, підказок і стану панелей під час перетягування.
+   Токени — з системи BV2 AAA (синій #2f8cff, золото #ffc53d, фон #050b18). */
+
+:root{
+  --dnd-ok:#35d07f;
+  --dnd-bad:#ff5a4d;
+  --dnd-warn:#ffc53d;
+  --dnd-ink:#e8f0ff;
+  --dnd-bg:rgba(5,11,24,.94);
+  --dnd-line:rgba(88,150,255,.55);
+}
+
+/* картки, які можна тягнути: курсор і без нативного виділення / перетягування картинок */
+#adp .wcard, #launch .wcard, #adp [data-ad="radpick"], #adp [data-ad="ewpick"], .tel-row{
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+#adp .wcard img, #launch .wcard img, #adp [data-ad="radpick"] img, #adp [data-ad="ewpick"] img{
+  -webkit-user-drag:none; user-drag:none; pointer-events:none;
+}
+@media (hover:hover) and (pointer:fine){
+  #adp .wcard:not(.empty), #launch .wcard, #adp [data-ad="radpick"]:not(:disabled), #adp [data-ad="ewpick"]:not(:disabled), .tel-row:has([data-tp="place"]:not(:disabled)){ cursor:grab; }
+}
+
+/* на час перетягування */
+body.dnd-on, body.dnd-on *{ cursor:grabbing !important; }
+body.dnd-on{ -webkit-user-select:none; user-select:none; touch-action:none; }
+body.dnd-on .maplibregl-canvas{ cursor:grabbing !important; }
+
+/* картка-джерело */
+.dnd-src{ opacity:.42 !important; outline:2px dashed var(--dnd-warn); outline-offset:-2px; }
+
+/* панель-джерело: на телефоні зникає (мапа має бути видна), на ПК — тьмяніє */
+#adp, #launch{ transition:opacity .16s ease; }
+body.dnd-on #adp.dnd-away, body.dnd-on #launch.dnd-away{ opacity:.3; }
+@media (max-width:699px){
+  body.dnd-on #adp.dnd-away, body.dnd-on #launch.dnd-away{ opacity:0; pointer-events:none; }
+}
+
+/* «привид» картки */
+.dnd-ghost{
+  position:fixed; left:0; top:0; z-index:2600; pointer-events:none;
+  display:flex; align-items:center; gap:9px; max-width:240px; min-width:128px;
+  padding:7px 11px 7px 8px; border-radius:12px;
+  background:var(--dnd-bg); color:var(--dnd-ink);
+  border:1.5px solid var(--dnd-line);
+  box-shadow:0 12px 32px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.04);
+  font:600 12px/1.25 "Exo 2",system-ui,-apple-system,"Segoe UI",sans-serif;
+  transform:translate3d(var(--gx,0px),var(--gy,0px),0) scale(.97);
+  transition:border-color .12s ease, box-shadow .12s ease, opacity .12s ease;
+  will-change:transform;
+}
+.dnd-ghost img{ width:46px; height:30px; object-fit:contain; flex:none; filter:drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+.dnd-ghost .gt{ min-width:0; display:flex; flex-direction:column; gap:2px; }
+.dnd-ghost b{ display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; letter-spacing:.01em; }
+.dnd-ghost small{ display:block; font-weight:500; font-size:11px; opacity:.92; white-space:normal; overflow-wrap:anywhere; }
+.dnd-ghost.ok{ border-color:var(--dnd-ok); box-shadow:0 12px 32px rgba(0,0,0,.55), 0 0 0 3px rgba(53,208,127,.22); }
+.dnd-ghost.ok small{ color:#9cf0c1; }
+.dnd-ghost.warn{ border-color:var(--dnd-warn); box-shadow:0 12px 32px rgba(0,0,0,.55), 0 0 0 3px rgba(255,197,61,.22); }
+.dnd-ghost.warn small{ color:#ffe08a; }
+.dnd-ghost.bad{ border-color:var(--dnd-bad); box-shadow:0 12px 32px rgba(0,0,0,.55), 0 0 0 3px rgba(255,90,77,.24); }
+.dnd-ghost.bad small{ color:#ffb1aa; }
+.dnd-ghost.off{ opacity:.78; border-style:dashed; }
+.dnd-ghost.off small{ color:#b9c8e6; }
+.dnd-ghost.pop{ transition:transform .2s cubic-bezier(.2,.8,.2,1), opacity .2s ease; opacity:0; transform:translate3d(var(--gx,0px),var(--gy,0px),0) scale(.35); }
+.dnd-ghost.shake{ animation:dndShake .3s ease; }
+@keyframes dndShake{
+  0%,100%{ margin-left:0 } 20%{ margin-left:-7px } 40%{ margin-left:6px } 60%{ margin-left:-4px } 80%{ margin-left:3px }
+}
+
+/* підказка зверху */
+.dnd-hint{
+  position:fixed; left:50%; top:calc(env(safe-area-inset-top,0px) + 12px); z-index:2590; pointer-events:none;
+  transform:translateX(-50%); padding:7px 14px; border-radius:999px;
+  background:var(--dnd-bg); color:var(--dnd-ink); border:1px solid var(--dnd-line);
+  font:600 12px/1.2 "Exo 2",system-ui,sans-serif; letter-spacing:.02em; white-space:nowrap;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+}
+.dnd-hint i{ font-style:normal; color:var(--dnd-warn); margin-right:6px; }
+
+/* швидкий пуск після скидання ракети на ціль */
+.dnd-launch{
+  position:fixed; left:50%; top:calc(env(safe-area-inset-top,0px) + 58px); z-index:2580;
+  transform:translateX(-50%); display:flex; align-items:center; gap:10px;
+  max-width:min(92vw,560px); padding:8px 8px 8px 14px; border-radius:14px;
+  background:var(--dnd-bg); color:var(--dnd-ink); border:1px solid var(--dnd-line);
+  box-shadow:0 12px 34px rgba(0,0,0,.55);
+  font:600 12.5px/1.3 "Exo 2",system-ui,sans-serif;
+  animation:dndPill .22s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes dndPill{ from{ opacity:0; transform:translate(-50%,-8px) } to{ opacity:1; transform:translate(-50%,0) } }
+.dnd-launch .dl-t{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dnd-launch .dl-t small{ display:block; font-weight:500; opacity:.8; font-size:11px; overflow:hidden; text-overflow:ellipsis; }
+.dnd-launch button{
+  flex:none; min-height:36px; padding:0 14px; border-radius:10px; border:0; cursor:pointer;
+  font:800 12px/1 "Exo 2",system-ui,sans-serif; letter-spacing:.06em; text-transform:uppercase;
+}
+.dnd-launch .dl-go{ background:var(--dnd-warn); color:#1a1200; }
+.dnd-launch .dl-go:disabled{ opacity:.45; cursor:not-allowed; }
+.dnd-launch .dl-x{ background:rgba(255,255,255,.08); color:var(--dnd-ink); padding:0 12px; font-size:16px; letter-spacing:0; }
+.dnd-launch.ru{ border-color:rgba(255,90,77,.6); }
+@media (max-width:699px){
+  .dnd-launch{ top:calc(env(safe-area-inset-top,0px) + 52px); }
+  .dnd-ghost{ max-width:210px; }
+}
+@media (prefers-reduced-motion:reduce){
+  .dnd-ghost, .dnd-ghost.pop, .dnd-launch{ transition:none; animation:none; }
+  .dnd-ghost.shake{ animation:none; }
+}

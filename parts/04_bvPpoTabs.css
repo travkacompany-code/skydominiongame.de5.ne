@@ -1,0 +1,7 @@
+
+/* етап 7.56: у панелі ППО 5 вкладок (РЕБ, РЛС) — в один ряд */
+#adp .tabs{flex-wrap:nowrap;gap:4px;overflow-x:auto;scrollbar-width:none}
+#adp .tabs::-webkit-scrollbar{display:none}
+#adp .tabs button{flex:1 1 auto;white-space:nowrap;padding:0 3px;font-size:9px;letter-spacing:-.02em}
+#adp .trow .tn{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+#adp .trow .tn small{display:block;color:var(--muted);font-size:11px;line-height:1.35;white-space:normal;text-transform:none;letter-spacing:0}
