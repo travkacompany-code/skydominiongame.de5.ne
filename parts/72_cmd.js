@@ -28,7 +28,8 @@
     port: "M12 4v12M8 8h8M4 15c0 3 4 5 8 5s8-2 8-5", fac: "M3 20V10l5 3V10l5 3V6h4v14z", post: "M4 17a8 8 0 0 1 16 0M8 17a4 4 0 0 1 8 0M12 17h.01",
     node: "M12 4v16M4 12h16M12 12m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0", fs: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
     target: "M12 3v4M12 17v4M3 12h4M17 12h4M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0", flag: "M6 21V4M6 5h11l-2 4 2 4H6",
-    chat: "M4 5h16v11H9l-5 4z", stat: "M5 20V10M12 20V4M19 20v-7", gen: "M12 8v4M12 16h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"
+    chat: "M4 5h16v11H9l-5 4z", stat: "M5 20V10M12 20V4M19 20v-7", gen: "M12 8v4M12 16h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
+    copy: "M9 9h10v11H9zM5 15V4h10", cmd: "M4 6l5 5-5 5M12 17h8", eye: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"
   };
   const ico = (d, c) => `<svg class="k-ico ${c || ""}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
 
@@ -53,6 +54,15 @@
     "Нічого не знайдено": ["Ничего не найдено", "Nothing found"], "Ваша техніка відсутня": ["Вашей техники нет", "No own assets"], "Об'єктів немає": ["Объектов нет", "No objects"],
     "Упевненість": ["Уверенность", "Confidence"], "Вік даних": ["Возраст данных", "Data age"], "Розпізнано": ["Опознано", "Identified"], "Виявлено": ["Обнаружено", "Detected"], "Втрачено": ["Потеряно", "Lost"]
   };
+  Object.assign(DICT, {
+    "Пресети": ["Пресеты", "Presets"], "Бойовий": ["Боевой", "Combat"], "Чистий": ["Чистый", "Clean"], "Розвідка": ["Разведка", "Recon"],
+    "Копіювати координати": ["Копировать координаты", "Copy coordinates"], "Координати скопійовано": ["Координаты скопированы", "Coordinates copied"],
+    "Команди": ["Команды", "Commands"], "Цілі": ["Цели", "Targets"], "Панелі": ["Панели", "Panels"], "Карта": ["Карта", "Map"], "Накладки": ["Наложения", "Overlays"], "Система": ["Система", "System"],
+    "Наступна ціль": ["Следующая цель", "Next target"], "Попередня ціль": ["Предыдущая цель", "Previous target"], "Центрувати на виборі": ["Центрировать на выборе", "Center on selection"],
+    "Наблизити · віддалити": ["Приблизить · отдалить", "Zoom in · out"], "Підписи цілей": ["Подписи целей", "Target labels"], "Пошук": ["Поиск", "Search"],
+    "Вибір": ["Выбор", "Select"], "Перейти": ["Перейти", "Go"], "Увімкнено": ["Включено", "Enabled"], "Вимкнено": ["Выключено", "Disabled"], "Стан": ["Состояние", "Status"],
+    "Міцність": ["Прочность", "Integrity"], "Боєкомплект": ["Боекомплект", "Ammo"], "Ракети": ["Ракеты", "Missiles"], "Упевненість": ["Уверенность", "Confidence"], "Вік даних": ["Возраст данных", "Data age"]
+  });
   function i18n() { try { if (A() && A().i18nAdd) A().i18nAdd(DICT); } catch (e) { /* */ } }
 
   /* ------------------------------------------------------------------ стан шару */
@@ -129,49 +139,69 @@
   }
 
   /* ------------------------------------------------------------------ DOM */
-  function build() {
+function build() {
     root = document.createElement("div"); root.id = "cmd";
+    const rb = (tab, ic, nm, key, bg) => `<button class="rb" data-tab="${tab}" aria-label="${nm} (${key})">${ico(IC[ic])}<span class="tt">${nm}<kbd>${key}</kbd></span>${bg ? `<i class="bg ${bg[1]}" id="${bg[0]}"></i>` : ""}</button>`;
     root.innerHTML = `
     <canvas id="cmdOv"></canvas>
-    <header id="cmdTop" class="k-pn k-br">
-      <div class="tl"><svg class="mark" viewBox="0 0 32 32" fill="none"><rect x="1" y="1" width="30" height="30" rx="7" stroke="#ff4d3f" stroke-opacity=".6"/><path d="M7 24 16 7l9 17" stroke="#f1f3f5" stroke-width="2.2" stroke-linejoin="round"/><path d="M11.5 18.5h9" stroke="#ffc83d" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="#ffc83d"/></svg>
+    <header id="cmdTop" class="k-pn">
+      <div class="tl"><svg class="mark" viewBox="0 0 32 32" fill="none"><rect x="1" y="1" width="30" height="30" rx="8" stroke="#f2b53c" stroke-opacity=".55"/><path d="M7 24 16 7l9 17" stroke="#f1f3f5" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><path d="M11.5 18.5h9" stroke="#f2b53c" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="#f2b53c"/></svg>
         <div class="nm"><b>SKY<i>DOMINION</i></b><small id="ctMode">—</small></div><div class="ph" id="ctPh">—</div></div>
       <div class="tc"><button class="pp" id="ctPause" title="Пауза (Пробіл)">${ico(IC.pause)}</button>
         <div class="clk"><span class="t" id="ctClk">00:00</span><span class="d" id="ctDay">—</span></div>
-        <div class="sc" id="ctSc"><span class="ua">0</span><em>:</em><span class="ru">0</span></div></div>
+        <div class="sc" id="ctSc" title="Очки сторін: Україна : Росія"><span class="ua">0</span><em>:</em><span class="ru">0</span></div></div>
       <div class="tr"><div class="thr" id="ctThr" data-l="0"><small><span>Загроза</span><b id="ctThrN">0</b></small><div class="bar"><i></i><i></i><i></i><i></i><i></i></div></div>
         <div class="mny" id="ctMny" style="display:none"><b>—</b><small>бюджет</small></div>
         <button class="go" id="ctReady" style="display:none">Готово</button>
-        <button class="ib" id="ctSearch" title="Пошук (Ctrl+K)">${ico(IC.search)}</button>
-        <button class="ib" id="ctMore" title="Меню бою">${ico(IC.dots)}</button></div>
+        <button class="ib sr" id="ctSearch" aria-label="Пошук (Ctrl K)">${ico(IC.search)}<span>Пошук</span><kbd>Ctrl K</kbd></button>
+        <button class="ib" id="ctMore" aria-label="Меню бою">${ico(IC.dots)}</button></div>
       <div class="prg"><i id="ctPrg"></i></div>
     </header>
     <div id="cmdMenu" class="k-pn"></div>
-    <nav id="cmdRail" class="k-pn k-br" aria-label="Навігація">
-      <button class="rb" data-tab="threat" title="Обстановка (1)">${ico(IC.threat)}<span>Обстановка</span><i class="bg" id="bgThr"></i></button>
-      <button class="rb" data-tab="assets" title="Техніка (2)">${ico(IC.assets)}<span>Техніка</span><i class="bg cy" id="bgAst"></i></button>
-      <button class="rb" data-tab="objs" title="Об'єкти (3)">${ico(IC.objs)}<span>Об'єкти</span><i class="bg" id="bgObj"></i></button>
-      <button class="rb" data-tab="log" title="Журнал (4)">${ico(IC.log)}<span>Журнал</span><i class="bg cy" id="bgLog"></i></button>
-      <button class="rb" data-tab="layers" title="Шари (5)">${ico(IC.layers)}<span>Шари</span></button>
-      <hr><button class="rb" data-act="help" title="Гарячі клавіші (?)">${ico(IC.help)}<span>Довідка</span></button>
+    <nav id="cmdRail" class="k-pn" aria-label="Навігація">
+      ${rb("threat", "threat", "Обстановка", "1", ["bgThr", ""])}${rb("assets", "assets", "Техніка", "2", ["bgAst", "cy"])}${rb("objs", "objs", "Об'єкти", "3", ["bgObj", ""])}${rb("log", "log", "Журнал", "4", ["bgLog", "cy"])}${rb("layers", "layers", "Шари", "5")}
+      <hr><button class="rb" data-act="help" aria-label="Гарячі клавіші (?)">${ico(IC.help)}<span class="tt">Гарячі клавіші<kbd>?</kbd></span></button>
     </nav>
-    <aside id="cmdDrawer" class="k-pn k-br"><div class="dh"><h3 id="cdT"></h3><button class="x" data-act="close" aria-label="Закрити">${ico(IC.x)}</button></div><div class="db" id="cdB"></div></aside>
-    <section id="cmdInsp" class="k-pn k-br"></section>
+    <aside id="cmdDrawer" class="k-pn"><div class="dh"><div class="tt"><h3 id="cdT"></h3><span class="ds" id="cdS"></span></div><button class="x" data-act="close" aria-label="Закрити">${ico(IC.x)}</button></div><div class="db" id="cdB"></div></aside>
+    <section id="cmdInsp" class="k-pn"></section>
     <div id="cmdAlert" class="k-pn"><svg class="sg k-ico" viewBox="0 0 24 24"><path d="${IC.warn}"/></svg><b id="caT">Повітряна тривога</b><span id="caS"></span></div>
-    <section id="cmdMini" class="k-pn k-br"><canvas id="cmdMiniC"></canvas><div class="mh">Мінікарта</div><button class="mx" data-act="mini" aria-label="Сховати">${ico(IC.x)}</button></section>
-    <button id="cmdMiniOpen" class="k-pn" style="display:none" title="Мінікарта (M)">${ico(IC.map)}</button>
-    <section id="cmdLog" class="k-pn k-br"><button class="lh" id="clH"><b>Журнал</b><span id="clL"><i></i>Подій поки немає</span><em id="clC"></em><i class="cnt" id="clN">0</i></button></section>
+    <div id="cmdToasts" aria-live="polite"></div>
+    <section id="cmdMini" class="k-pn"><canvas id="cmdMiniC"></canvas><div class="mh">Мінікарта</div><button class="mx" data-act="mini" aria-label="Сховати">${ico(IC.x)}</button></section>
+    <button id="cmdMiniOpen" class="k-pn" style="display:none" aria-label="Мінікарта (M)">${ico(IC.map)}</button>
+    <section id="cmdLog" class="k-pn"><button class="lh" id="clH"><b>Журнал</b><span id="clL"><i></i>Подій поки немає</span><em id="clC"></em><i class="cnt" id="clN">0</i></button></section>
     <div id="cmdTip"></div>
-    <div id="cmdPal"><div class="box k-pn k-br"><input id="cpIn" placeholder="Пошук цілей, техніки, об'єктів…" autocomplete="off" spellcheck="false"><div class="res" id="cpR"></div></div></div>
-    <div id="cmdKeys"><div class="box k-pn k-br"><h3>Гарячі клавіші</h3><div class="g">
-      <div>Пауза / продовжити<kbd>Пробіл</kbd></div><div>Обстановка · Техніка · Об'єкти<kbd>1 · 2 · 3</kbd></div><div>Журнал · Шари<kbd>4 · 5</kbd></div><div>Пошук<kbd>Ctrl K · /</kbd></div>
-      <div>Наступна / попередня ціль<kbd>] · [</kbd></div><div>Найближча загроза<kbd>N</kbd></div><div>Супровід вибраної цілі<kbd>F</kbd></div><div>Загальний вид<kbd>Home</kbd></div>
-      <div>Сітка · Зони ППО<kbd>G · Z</kbd></div><div>РЛС · Вектори · Сліди<kbd>R · V · T</kbd></div><div>Мінікарта<kbd>M</kbd></div><div>Закрити все<kbd>Esc</kbd></div></div></div></div>`;
+    <div id="cmdPal"><div class="box k-pn"><div class="pin">${ico(IC.search)}<input id="kpIn" placeholder="Пошук цілей, техніки, об'єктів…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div><div class="res" id="kpR"></div>
+      <div class="pf"><span><kbd>↑</kbd><kbd>↓</kbd>Вибір</span><span><kbd>Enter</kbd>Перейти</span></div></div></div>
+    <div id="cmdKeys"><div class="box k-pn"><div class="kh"><h3>Гарячі клавіші</h3><button class="kx" data-act="keysx" aria-label="Закрити">${ico(IC.x)}</button></div><div class="kb">${keysHtml()}</div></div></div>`;
     body.appendChild(root);
     const ov = $("cmdOv"); body.insertBefore(ov, $("map").nextSibling); ov.style.cssText = "";   // канва — одразу над мапою, під інтерфейсом
     wire();
   }
 
+  /* гарячі клавіші: єдине джерело для довідки (і нагадування в палітрі) */
+  const KEYS = [
+    ["Панелі", [["Обстановка", ["1"]], ["Техніка", ["2"]], ["Об'єкти", ["3"]], ["Журнал", ["4"]], ["Шари мапи", ["5"]]]],
+    ["Обстановка", [["Наступна ціль", ["]"]], ["Попередня ціль", ["["]], ["Найближча загроза", ["N"]], ["Супровід цілі", ["F"]], ["Центрувати на виборі", ["C"]]]],
+    ["Карта", [["Загальний вид", ["Home"]], ["Наблизити · віддалити", ["+", "−"]], ["Мінікарта", ["M"]], ["Пошук", ["Ctrl", "K"]]]],
+    ["Накладки", [["Сітка координат", ["G"]], ["Зони прикриття ППО", ["Z"]], ["Виявлення РЛС", ["R"]], ["Вектори загроз", ["V"]], ["Сліди руху", ["T"]], ["Підписи цілей", ["B"]]]],
+    ["Система", [["Пауза / продовжити", ["Пробіл"]], ["Довідка", ["?"]], ["Закрити все", ["Esc"]]]]
+  ];
+  function keysHtml() {
+    return KEYS.map(([g, rows]) => `<div class="grp"><h4>${g}</h4>${rows.map(([n, ks]) => `<div class="r"><span>${n}</span><span class="ks">${ks.map(k => `<kbd>${k}</kbd>`).join("")}</span></div>`).join("")}</div>`).join("");
+  }
+
+  /* сповіщення зверху: коротка відповідь інтерфейсу на дію */
+  function say(m, kind) {
+    const box = $("cmdToasts"); if (!box || !m) return; m = String(m);
+    const dismiss = e => { e.classList.add("out"); setTimeout(() => e.remove(), 220); };
+    const last = box.lastElementChild;
+    if (last && last._m === m && !last.classList.contains("out")) { clearTimeout(last._to); last._to = setTimeout(() => dismiss(last), 2800); return; }
+    const e = document.createElement("div"); e.className = "kt " + (kind || "info"); e.textContent = m; e._m = m; box.appendChild(e);
+    while (box.children.length > 3) box.firstElementChild.remove();
+    e._to = setTimeout(() => dismiss(e), kind === "warn" || kind === "alert" ? 4200 : 2800);
+  }
+
+  
   /* ------------------------------------------------------------------ керування вкладками */
   const TABS = { threat: "Обстановка", assets: "Техніка", objs: "Об'єкти", log: "Журнал", layers: "Шари мапи" };
   function openTab(t) {
@@ -179,7 +209,7 @@
     C.tab = t; body.classList.toggle("k-dr", !!t);
     $("cmdDrawer").classList.toggle("on", !!t);
     root.querySelectorAll("#cmdRail .rb[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-    if (t) { $("cdT").textContent = TABS[t]; C.sig = ""; renderDrawer(true); if (t === "log") { C.logNew = 0; updBadges(); } }
+    if (t) { $("cdT").textContent = TABS[t]; $("cmdDrawer").classList.remove("still"); C.sig = ""; renderDrawer(true); if (t === "log") { C.logNew = 0; updBadges(); } }
   }
   function updBadges() {
     const set = (id, n, cls) => { const e = $(id); if (!e) return; e.textContent = n > 99 ? "99+" : n; e.classList.toggle("on", n > 0); };
@@ -211,9 +241,9 @@
     const sig = [C.thrFilter, C.thrSort, rows.map(r => r.id).join(","), C.sel && C.sel.id].join("|");
     if (!force && sig === C.sig) { patchThreat(rows); return; }
     C.sig = sig;
-    const head = `<div class="k-kpis"><div class="k-kpi"><small>Цілі в повітрі</small><b class="${lv.n ? "b" : "g"}" id="kpN">${lv.n}</b></div><div class="k-kpi"><small>Найближчий вплив</small><b class="${lv.eta != null && lv.eta < 30 ? "b" : "w"}" id="kpE">${fmtT(lv.eta)}</b></div>
+    const head = `<div class="k-kpis q"><div class="k-kpi"><small>У повітрі</small><b class="${lv.n ? "b" : "g"}" id="kpN">${lv.n}</b></div><div class="k-kpi"><small>До впливу</small><b class="${lv.eta != null && lv.eta < 30 ? "b" : "w"}" id="kpE">${fmtT(lv.eta)}</b></div>
       <div class="k-kpi"><small>Збито</small><b class="g">${down}</b></div><div class="k-kpi"><small>Прорвалося</small><b class="${leaks ? "w" : ""}">${leaks}</b></div></div>
-      <div class="k-chips">${chips}</div><div class="k-chips"><button class="k-chip ${C.thrSort === "eta" ? "on" : ""}" data-ths="eta">за часом</button><button class="k-chip ${C.thrSort === "dist" ? "on" : ""}" data-ths="dist">за відстанню</button><button class="k-chip ${C.thrSort === "name" ? "on" : ""}" data-ths="name">за типом</button></div>`;
+      <div class="k-chips">${chips}</div><div class="k-sortl">Сортування</div><div class="k-chips"><button class="k-chip ${C.thrSort === "eta" ? "on" : ""}" data-ths="eta">за часом</button><button class="k-chip ${C.thrSort === "dist" ? "on" : ""}" data-ths="dist">за відстанню</button><button class="k-chip ${C.thrSort === "name" ? "on" : ""}" data-ths="name">за типом</button></div>`;
     let h = head;
     if (!rows.length) h += `<div class="k-empty">${ico(IC.threat)}<br>${fogLive() ? "Немає виявлених цілей" : "Небо чисте"}</div>`;
     for (const r of rows.slice(0, 120)) h += threatRowHtml(r);
@@ -303,56 +333,85 @@
     if (atEnd) box.scrollTop = box.scrollHeight;
   }
 
+  const PRESETS = { combat: { cover: 1, detect: 1, vec: 1, lbl: 1, trail: 1, grid: 0 }, clean: { cover: 0, detect: 0, vec: 0, lbl: 0, trail: 0, grid: 0 }, recon: { cover: 0, detect: 1, vec: 1, lbl: 1, trail: 1, grid: 1 } };
+  const presetOn = p => OV_KEYS.every(k => !!OV[k] === !!PRESETS[p][k]);
   function renderLayers() {
     if (C.sig === "L" + JSON.stringify(OV)) return; C.sig = "L" + JSON.stringify(OV);
-    const tg = (k, n, d) => `<label class="k-tg"><input type="checkbox" data-ov="${k}" ${OV[k] ? "checked" : ""}><span class="sw"></span><span class="l">${n}<small>${d}</small></span></label>`;
-    let h = `<div class="k-sec">Тактичні накладки</div>` + tg("cover", "Зони прикриття ППО", "радіуси дії систем сторін, перекриття підсилюють колір") + tg("detect", "Виявлення РЛС", "дальність виявлення радіолокаційних станцій, розгортка") +
-      tg("vec", "Вектори загроз", "курс, маршрут до цілі й час до влучання") + tg("lbl", "Підписи цілей", "позивний, тип і ETA біля кожної цілі") + tg("trail", "Сліди руху", "траєкторії останніх хвилин") + tg("grid", "Сітка координат", "градусна сітка з підписами на краях") +
-      `<div class="k-sec">Шари мапи</div>`;
+    const tg = (k, n, d, key) => `<label class="k-tg"><input type="checkbox" data-ov="${k}" ${OV[k] ? "checked" : ""}><span class="sw"></span><span class="l">${n}<small>${d}</small></span><span class="kk"><kbd>${key}</kbd></span></label>`;
+    const pre = [["combat", "Бойовий"], ["clean", "Чистий"], ["recon", "Розвідка"]];
+    let h = `<div class="k-sec">Пресети</div><div class="k-pre">${pre.map(([k, n]) => `<button data-pre="${k}" class="${presetOn(k) ? "on" : ""}">${n}</button>`).join("")}</div>` +
+      `<div class="k-sec">Тактичні накладки</div><div class="k-card">` + tg("cover", "Зони прикриття ППО", "радіуси дії систем сторін, перекриття підсилюють колір", "Z") + tg("detect", "Виявлення РЛС", "дальність виявлення радіолокаційних станцій, розгортка", "R") +
+      tg("vec", "Вектори загроз", "курс, маршрут до цілі й час до влучання", "V") + tg("lbl", "Підписи цілей", "позивний, тип і ETA біля кожної цілі", "B") + tg("trail", "Сліди руху", "траєкторії останніх хвилин", "T") + tg("grid", "Сітка координат", "градусна сітка з підписами на краях", "G") +
+      `</div><div class="k-sec">Шари мапи</div><div class="k-card">`;
     const inputs = [...document.querySelectorAll("#layers input[type=checkbox]")];
     for (const i of inputs) { const lab = i.closest("label"); const nm = lab ? lab.textContent.trim() : i.dataset.group; h += `<label class="k-tg"><input type="checkbox" data-proxy="${inputs.indexOf(i)}" ${i.checked ? "checked" : ""}><span class="sw"></span><span class="l">${esc(nm)}</span></label>`; }
-    $("cdB").innerHTML = h;
+    $("cdB").innerHTML = h + `</div>`;
+  }
+  const OV_KEYS = ["cover", "detect", "vec", "lbl", "trail", "grid"];
+  function drawerSub() {
+    const a = A(), n = C.thr.filter(t => !t.carrier).length;
+    switch (C.tab) {
+      case "threat": return n ? n + " цілей у повітрі" : fogLive() ? "Немає виявлених цілей" : "Небо чисте";
+      case "assets": return ownAssets().length + " систем ППО";
+      case "objs": return (C.objRisk | 0) ? (C.objRisk | 0) + " у зоні ризику" : "Усі об'єкти під контролем";
+      case "log": return C.log.length + " подій";
+      case "layers": return OV_KEYS.filter(k => OV[k]).length + " із " + OV_KEYS.length + " накладок активні";
+    }
+    return "";
   }
   function renderDrawer(force) {
     if (!C.tab) return;
     const keepScroll = $("cdB").scrollTop;
     ({ threat: renderThreat, assets: renderAssets, objs: renderObjs, log: renderLog, layers: renderLayers })[C.tab](force);
     if (C.tab !== "log") $("cdB").scrollTop = keepScroll;
+    const sub = drawerSub(), e = $("cdS"); if (e && e.textContent !== sub) e.textContent = sub;
+    const dr = $("cmdDrawer"); if (!dr.classList.contains("still")) setTimeout(() => dr.classList.add("still"), 420);   // вхідна анімація — лише при відкритті
   }
 
   /* ------------------------------------------------------------------ інспектор */
   function setSel(s) { C.sel = s; C.sig = ""; renderInsp(); renderDrawer(true); }
   function renderInsp() {
-    const el = $("cmdInsp"), a = A(), s = C.sel; if (!s) { el.classList.remove("on"); return; }
-    let h = "", ok = false;
-    const hd = (ic, nm, sub, cls) => `<div class="ih"><div class="ic">${ic}</div><div><b>${esc(nm)}</b><small class="${cls || ""}">${esc(sub)}</small></div><button class="x" data-act="insx">${ico(IC.x)}</button></div>`;
-    const st = (k, v, span) => `<div class="is ${span ? "span" : ""}"><small>${k}</small><b>${v}</b></div>`;
+    const el = $("cmdInsp"), a = A(), s = C.sel; if (!s) { el.classList.remove("on"); el._sid = null; return; }
+    let h = "", ok = false, side = "";
+    const hd = (ic, nm, sub) => `<div class="ih"><div class="ic">${ic}</div><div><b>${esc(nm)}</b><small>${esc(sub)}</small></div><button class="x" data-act="insx" aria-label="Закрити">${ico(IC.x)}</button></div>`;
+    const st = (k, v, span, cls) => `<div class="is ${span ? "span" : ""}"><small>${k}</small><b class="${cls || ""}">${v}</b></div>`;
+    const pill = (t, c) => `<span class="pill ${c || ""}">${t}</span>`;
+    const gauge = (lb, val, pc, cls) => `<div class="kg"><div class="t"><span>${lb}</span><b>${val}</b></div><div class="k-bar"><i class="${cls || ""}" style="width:${clamp(pc, 0, 100)}%"></i></div></div>`;
+    const body2 = x => `<div class="ib2">${x}</div>`;
     if (s.type === "thr") {
       const t = C.thr.find(x => x.id === s.id);
       if (t) {
-        ok = true; const dm = (() => { let d = Infinity; for (const u of ownAssets()) { const k = fastKm(t.pos, u.pos); if (k < d) d = k; } return isFinite(d) ? d : null; })();
-        h = hd(unitIconHtml(t), t.name, (t.side ? a.SIDE_N[t.side] + " · " : "") + t.cs, t.side) + `<div class="ig">` + st("Швидкість", t.spd ? t.spd + " км/год" : "—") + st("Курс", t.hdg != null ? Math.round(t.hdg) + "°" : "—") + (t.fog ? st("Упевненість", Math.round((t.conf || 0) * 100) + "%") + st("Вік даних", Math.round(t.age || 0) + " с") : st("Час до цілі", fmtT(t.eta)) + st("До ППО", fmtKm(dm))) +
+        ok = true; side = t.side || "";
+        const dm = (() => { let d = Infinity; for (const u of ownAssets()) { const k = fastKm(t.pos, u.pos); if (k < d) d = k; } return isFinite(d) ? d : null; })();
+        const pl = t.fog ? pill(({ identified: "Розпізнано", detected: "Виявлено", lost: "Втрачено" })[t.st] || t.st, t.st === "lost" ? "warn" : "ok") : t.eta != null && t.eta < 20 ? pill("Влучання за " + fmtT(t.eta), "bad") : t.eta != null && t.eta < 60 ? pill("До цілі " + fmtT(t.eta), "warn") : pill("У польоті");
+        h = hd(unitIconHtml(t), t.name, (t.side ? a.SIDE_N[t.side] + " · " : "") + t.cs) + body2(pl + `<div class="ig">` + st("Швидкість", t.spd ? t.spd + " км/год" : "—") + st("Курс", t.hdg != null ? Math.round(t.hdg) + "°" : "—") + (t.fog ? st("Упевненість", Math.round((t.conf || 0) * 100) + "%") + st("Вік даних", Math.round(t.age || 0) + " с") : st("Час до цілі", fmtT(t.eta), false, t.eta != null && t.eta < 20 ? "b" : "") + st("До ППО", fmtKm(dm))) +
           (t.from ? st("Пуск", esc(t.from.replace("Ручний запуск · ", "")), true) : "") + (t.target ? st("Ціль", esc(t.target), true) : "") + `</div>
-          <div class="k-act" style="margin:0"><button class="k-btn pri" data-act="follow">Супровід</button><button class="k-btn" data-act="locate">На мапі</button></div>`;
+          <div class="k-act"><button class="k-btn pri" data-act="follow">${ico(IC.target)}Супровід</button><button class="k-btn" data-act="locate">${ico(IC.map)}На мапі</button></div>`);
       }
     } else if (s.type === "ad") {
       const u = a.ADS.units.get(s.rid), T = u && a.AD_TYPES[u.key];
       if (u && T) {
-        ok = true; const cap = T.mag | 0, dm = window.BV_DMG ? window.BV_DMG.level(u.id) : 0, mine = sides().includes(u.side || "ua");
-        h = hd(`<img src="${a.adSrc(u.key)}" alt="">`, T.n, a.SIDE_N[u.side || "ua"] + " · " + T.type, u.side || "ua") + `<div class="ig">` + st("Стан", esc(({ ready: "Готова", reload: "Перезарядка " + Math.ceil(u.rl || 0) + " с", move: "Переміщення", patrol: "Патруль", base: "На базі", transit: "Виліт", rtb: "Повернення" })[u.state] || u.state)) + st("Режим", u.mode === "manual" ? "Вручну" : "Автоматично") +
-          st(T.gun ? "Боєкомплект" : "Ракети", (u.mag | 0) + " / " + cap) + st("Резерв", u.reserve === Infinity ? "∞" : (u.reserve | 0)) + st("Радіус", T.r + " км") + st("Збиття", u.kills | 0) + (dm ? st("Стан техніки", "ушкоджена", true) : "") + `</div>` +
-          (mine ? `<div class="k-act" style="margin:0"><button class="k-btn pri" data-act="ad-focus">На мапі</button><button class="k-btn" data-act="ad-reload">Перезарядка</button><button class="k-btn" data-act="ad-mode">${u.mode === "manual" ? "Автоматично" : "Вручну"}</button>` +
-            (dm ? `<button class="k-btn" data-act="ad-repair">Ремонт</button>` : "") + (T.air ? `<button class="k-btn" data-act="ad-rtb">Повернути</button>` : "") + `<button class="k-btn dng" data-act="ad-remove">Зняти</button></div>` : `<div class="k-act" style="margin:0"><button class="k-btn" data-act="ad-focus">На мапі</button></div>`);
+        ok = true; side = u.side || "ua"; const cap = T.mag | 0, mag = u.mag | 0, pc = cap ? mag / cap * 100 : 0, dm = window.BV_DMG ? window.BV_DMG.level(u.id) : 0, mine = sides().includes(u.side || "ua"), low = cap > 0 && mag / cap < 0.34 && !(u.reserve > 0);
+        const stN = ({ ready: "Готова", reload: "Перезарядка " + Math.ceil(u.rl || 0) + " с", move: "Переміщення", patrol: "Патруль", base: "На базі", transit: "Виліт", rtb: "Повернення" })[u.state] || u.state;
+        h = hd(`<img src="${a.adSrc(u.key)}" alt="">`, T.n, a.SIDE_N[u.side || "ua"] + " · " + T.type) + body2(pill(esc(stN), dm ? "bad" : u.state === "ready" || u.state === "patrol" ? "ok" : low ? "warn" : "") + (cap ? gauge(T.gun ? "Боєкомплект" : "Ракети", mag + " / " + cap, pc, low ? "b" : pc < 50 ? "w" : "") : "") +
+          `<div class="ig">` + st("Режим", u.mode === "manual" ? "Вручну" : "Автоматично") + st("Резерв", u.reserve === Infinity ? "∞" : (u.reserve | 0)) + st("Радіус", T.r + " км") + st("Збиття", u.kills | 0, false, (u.kills | 0) ? "g" : "") + (dm ? st("Стан техніки", "ушкоджена", true, "b") : "") + `</div>` +
+          (mine ? `<div class="k-act"><button class="k-btn pri" data-act="ad-focus">${ico(IC.map)}На мапі</button><button class="k-btn" data-act="ad-reload">Перезарядка</button><button class="k-btn" data-act="ad-mode">${u.mode === "manual" ? "Автоматично" : "Вручну"}</button>` +
+            (dm ? `<button class="k-btn" data-act="ad-repair">Ремонт</button>` : "") + (T.air ? `<button class="k-btn" data-act="ad-rtb">Повернути</button>` : "") + `<button class="k-btn dng" data-act="ad-remove">Зняти</button></div>` : `<div class="k-act"><button class="k-btn" data-act="ad-focus">${ico(IC.map)}На мапі</button></div>`));
       }
     } else if (s.type === "obj") {
       const o = a.OBJS[s.rid]; if (o) {
-        ok = true; const G = a.GAME, free = G.mode === "free" || !G.obj || G.obj.length !== a.OBJS.length, hp = free ? o.hp : G.obj[o.i], f = o.hp ? clamp(hp / o.hp, 0, 1) : 1, cv = coverAt(o.c, o.side);
-        h = hd(ico(OBJ_IC[o.t] || IC.gen), o.n, a.SIDE_N[o.side] + " · " + (OBJ_N[o.t] || o.t), o.side) + `<div class="ig">` + st("Міцність", !free && hp <= 0 ? "знищено" : Math.round(f * 100) + "%") + st("Прикриття ППО", cv.n ? cv.n + " сист. · " + Math.round(cv.v * 100) + "%" : "Незахищено") + st("Координати", o.c[1].toFixed(3) + "°, " + o.c[0].toFixed(3) + "°", true) + `</div>
-          <div class="k-act" style="margin:0"><button class="k-btn pri" data-act="obj-focus">На мапі</button></div>`;
+        ok = true; side = o.side; const G = a.GAME, free = G.mode === "free" || !G.obj || G.obj.length !== a.OBJS.length, hp = free ? o.hp : G.obj[o.i], f = o.hp ? clamp(hp / o.hp, 0, 1) : 1, cv = coverAt(o.c, o.side), dead = !free && hp <= 0;
+        h = hd(ico(OBJ_IC[o.t] || IC.gen), o.n, a.SIDE_N[o.side] + " · " + (OBJ_N[o.t] || o.t)) + body2((dead ? pill("Знищено", "bad") : cv.n ? pill("Під прикриттям ППО", "ok") : pill("Незахищено", "warn")) +
+          gauge("Міцність", dead ? "знищено" : Math.round(f * 100) + "%", dead ? 0 : f * 100, dead || f < 0.5 ? "b" : f < 0.8 ? "w" : "") + `<div class="ig">` + st("Прикриття ППО", cv.n ? cv.n + " сист. · " + Math.round(cv.v * 100) + "%" : "Незахищено", true, cv.n ? "g" : "w") + st("Координати", o.c[1].toFixed(3) + "°, " + o.c[0].toFixed(3) + "°", true) + `</div>
+          <div class="k-act"><button class="k-btn pri" data-act="obj-focus">${ico(IC.map)}На мапі</button><button class="k-btn" data-act="obj-copy">${ico(IC.copy)}Копіювати координати</button></div>`);
       }
     }
-    if (!ok) { C.sel = null; el.classList.remove("on"); return; }
-    el.innerHTML = h; el.classList.add("on");
+    if (!ok) { C.sel = null; el.classList.remove("on"); el._sid = null; return; }
+    const sid = s.type + ":" + (s.id != null ? s.id : s.rid);
+    el.dataset.side = side;
+    if (el._h !== h) { el.innerHTML = h; el._h = h; }
+    if (el._sid !== sid) { el._sid = sid; el.classList.remove("on"); void el.offsetWidth; }   // нова картка — анімація «прицілу» грає знову
+    el.classList.add("on");
   }
 
   /* ------------------------------------------------------------------ верхня смуга, тривога, тикер */
@@ -366,7 +425,7 @@
     const sp = $("ctSc"); sp.firstChild.textContent = Math.round(G.st.ua.pts); sp.lastChild.textContent = Math.round(G.st.ru.pts);
     const prg = $("ctPrg"); prg.style.width = isFinite(G.end) && G.end > G.start ? clamp((c - G.start) / (G.end - G.start) * 100, 0, 100) + "%" : "0%";
     const pb = document.querySelector('#gbBtns [data-s7="gmpause"]'), pp = $("ctPause"), paused = a.SIM.paused;
-    pp.disabled = !pb; pp.innerHTML = ico(paused ? IC.play : IC.pause); pp.title = (paused ? "Продовжити" : "Пауза") + " (Пробіл)";
+    pp.disabled = !pb; pp.innerHTML = ico(paused ? IC.play : IC.pause); pp.classList.toggle("paused", !!paused); pp.title = (paused ? "Продовжити" : "Пауза") + " (Пробіл)";
     const rb = document.querySelector('#gbBtns [data-s7="gmready"]'), rd = $("ctReady"); rd.style.display = rb && pre ? "" : "none";
     const my = document.querySelector("#gbMoney"), mn = $("ctMny"), tx = my ? my.textContent.replace(/\s+/g, " ").trim() : "";
     mn.style.display = tx && my.offsetParent !== undefined && tx.length < 40 ? "" : "none"; if (tx) mn.firstChild.textContent = tx;
@@ -413,6 +472,7 @@
     EV.on("toast", d => {
       const m = d.msg, cat = /знищено об'єкт|знищ/i.test(m) && !/збит/i.test(m) ? "obj" : /тривог/i.test(m) ? "alert" : "info";
       logAdd(m, cat, d.kind === "alert" ? "alert" : d.kind === "warn" ? "warn" : d.kind === "ok" ? "ok" : "info");
+      if (d.kind === "alert" || d.kind === "warn") say(m, d.kind);
     });
     EV.on("offline", () => logAdd("Картографічний сервер недоступний — працює офлайн-підкладка з вбудованих геоданих", "info", "warn"));
   }
@@ -423,7 +483,7 @@
   function selectAd(id, go) { const a = A(), u = a.ADS.units.get(+id); if (!u) return; C.sel = { type: "ad", id: "a" + u.id, rid: u.id }; if (go && window.BV_QUICK && sides().includes(u.side || "ua")) window.BV_QUICK.focus(u.id); else if (go) fly(u.pos, 7); C.sig = ""; renderInsp(); renderDrawer(true); }
   function selectObj(i, go) { const a = A(), o = a.OBJS[+i]; if (!o) return; C.sel = { type: "obj", id: "o" + o.i, rid: o.i }; if (go) fly(o.c, 7); C.sig = ""; renderInsp(); renderDrawer(true); }
   function cycleThreat(dir) {
-    const rows = threatRows(); if (!rows.length) return A().toast("Немає виявлених цілей", "warn");
+    const rows = threatRows(); if (!rows.length) return say("Немає виявлених цілей", "warn");
     let i = C.sel && C.sel.type === "thr" ? rows.findIndex(r => r.id === C.sel.id) : -1; i = (i + dir + rows.length) % rows.length; selectThreat(rows[i].id, true);
   }
   function overview() { const m = A().map; if (m) m.easeTo({ center: [32.2, 49.6], zoom: window.innerWidth < 700 ? 4.3 : 5.2, duration: 900 }); }
@@ -432,16 +492,22 @@
   function palItems(q) {
     const a = A(), out = []; q = q.trim().toLowerCase();
     const m = (s) => !q || s.toLowerCase().includes(q);
-    const acts = [["Обстановка", "1", () => openTab("threat")], ["Техніка", "2", () => openTab("assets")], ["Об'єкти", "3", () => openTab("objs")], ["Журнал", "4", () => openTab("log")], ["Шари мапи", "5", () => openTab("layers")], ["Загальний вид", "Home", overview], ["Гарячі клавіші", "?", () => toggleKeys(true)]];
-    for (const [n, k, f] of acts) if (m(n)) out.push({ n, s: "команда", k, f });
-    for (const t of C.thr) if (m(t.name + " " + t.cs + " " + t.from + " " + t.target)) out.push({ n: t.name + " · " + t.cs, s: "ціль" + (t.eta != null ? " · " + fmtT(t.eta) : ""), f: () => { selectThreat(t.id, true); } });
-    for (const u of ownAssets()) { const T = a.AD_TYPES[u.key]; if (T && m(T.n + " " + (u.post || ""))) out.push({ n: T.n + (u.post ? " · " + u.post : ""), s: "техніка", f: () => { openTab("assets"); selectAd(u.id, true); } }); }
-    if (q.length > 1) for (const o of a.OBJS) { if (out.length > 40) break; if (m(o.n)) out.push({ n: o.n, s: OBJ_N[o.t] || "об'єкт", f: () => { selectObj(o.i, true); } }); }
+    const acts = [["Обстановка", "1", () => openTab("threat"), IC.threat], ["Техніка", "2", () => openTab("assets"), IC.assets], ["Об'єкти", "3", () => openTab("objs"), IC.objs], ["Журнал", "4", () => openTab("log"), IC.log], ["Шари мапи", "5", () => openTab("layers"), IC.layers], ["Загальний вид", "Home", overview, IC.map], ["Гарячі клавіші", "?", () => toggleKeys(true), IC.help]];
+    for (const [n, k, f, ic] of acts) if (m(n)) out.push({ n, s: "", k, f, g: "Команди", ic });
+    for (const t of C.thr) if (m(t.name + " " + t.cs + " " + t.from + " " + t.target)) out.push({ n: t.name + " · " + t.cs, s: t.eta != null ? fmtT(t.eta) : "", f: () => { selectThreat(t.id, true); }, g: "Цілі", ic: IC.threat });
+    for (const u of ownAssets()) { const T = a.AD_TYPES[u.key]; if (T && m(T.n + " " + (u.post || ""))) out.push({ n: T.n + (u.post ? " · " + u.post : ""), s: "", f: () => { openTab("assets"); selectAd(u.id, true); }, g: "Техніка", ic: IC.assets }); }
+    if (q.length > 1) for (const o of a.OBJS) { if (out.length > 40) break; if (m(o.n)) out.push({ n: o.n, s: OBJ_N[o.t] || "об'єкт", f: () => { selectObj(o.i, true); }, g: "Об'єкти", ic: OBJ_IC[o.t] || IC.gen }); }
     return out.slice(0, 40);
   }
   let palSel = 0, palList = [];
-  function palRender() { palList = palItems($("cpIn").value); palSel = clamp(palSel, 0, Math.max(0, palList.length - 1)); $("cpR").innerHTML = palList.length ? palList.map((r, i) => `<div class="it ${i === palSel ? "sel" : ""}" data-pi="${i}">${esc(r.n)}<small>${esc(r.s)}</small>${r.k ? `<kbd>${r.k}</kbd>` : ""}</div>`).join("") : `<div class="k-empty">Нічого не знайдено</div>`; }
-  function togglePal(on) { const p = $("cmdPal"); on = on == null ? !p.classList.contains("on") : on; p.classList.toggle("on", on); if (!on) $("cpIn").blur(); if (on) { $("cpIn").value = ""; palSel = 0; palRender(); setTimeout(() => $("cpIn").focus(), 20); } }
+  function palRender() {
+    palList = palItems($("kpIn").value); palSel = clamp(palSel, 0, Math.max(0, palList.length - 1));
+    let h = "", g = null;
+    palList.forEach((r, i) => { if (r.g !== g) { g = r.g; h += `<div class="gh">${g}</div>`; } h += `<div class="it ${i === palSel ? "sel" : ""}" data-pi="${i}">${ico(r.ic || IC.gen)}<span class="nn">${esc(r.n)}</span>${r.s ? `<small>${esc(r.s)}</small>` : ""}${r.k ? `<kbd>${r.k}</kbd>` : ""}</div>`; });
+    $("kpR").innerHTML = h || `<div class="k-empty">Нічого не знайдено</div>`;
+    const sel = $("kpR").querySelector(".it.sel"); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+  }
+  function togglePal(on) { const p = $("cmdPal"); on = on == null ? !p.classList.contains("on") : on; p.classList.toggle("on", on); if (!on) $("kpIn").blur(); if (on) { $("kpIn").value = ""; palSel = 0; palRender(); setTimeout(() => $("kpIn").focus(), 20); } }
   function toggleKeys(on) { const p = $("cmdKeys"); on = on == null ? !p.classList.contains("on") : on; p.classList.toggle("on", on); }
 
   /* ------------------------------------------------------------------ події інтерфейсу */
@@ -456,15 +522,18 @@
       if (act === "insx") return setSel(null);
       if (act === "mini") { C.mini = false; lsSet("cmd.mini", "0"); applyMini(); return; }
       if (act === "locate") { const t2 = C.thr.find(x => x.id === C.sel.id); if (t2) fly(t2.pos, 7.5); return; }
-      if (act === "follow") { const s = C.sel; if (s && s.type === "thr" && window.BV_FOLLOW && typeof s.id === "number") window.BV_FOLLOW.start(s.id); else A().toast("Супровід доступний для цілей, що йдуть у вашому полі зору", "warn"); return; }
+      if (act === "follow") { const s = C.sel; if (s && s.type === "thr" && window.BV_FOLLOW && typeof s.id === "number") window.BV_FOLLOW.start(s.id); else say("Супровід доступний для цілей, що йдуть у вашому полі зору", "warn"); return; }
       if (act === "ad-focus") { const s = C.sel; if (s) { if (window.BV_QUICK && window.BV_QUICK.focus(s.rid)) return; const u = A().ADS.units.get(s.rid); if (u) fly(u.pos, 7.5); } return; }
       if (act && act.startsWith("ad-") && C.sel && C.sel.type === "ad" && window.BV_QUICK) {
         const id = C.sel.rid, u = A().ADS.units.get(id); if (!u) return; const Q = window.BV_QUICK;
         const ok = act === "ad-reload" ? Q.order(id, "reload") : act === "ad-mode" ? Q.order(id, "mode", u.mode === "manual" ? "auto" : "manual") : act === "ad-repair" ? Q.order(id, "repair") : act === "ad-rtb" ? Q.order(id, "rtb") : act === "ad-remove" ? Q.order(id, "remove") : false;
-        if (act === "ad-remove" && ok) setSel(null); if (!ok) A().toast("Команду зараз виконати неможливо", "warn"); C.sig = ""; renderInsp(); return;
+        if (act === "ad-remove" && ok) setSel(null); if (!ok) say("Команду зараз виконати неможливо", "warn"); C.sig = ""; renderInsp(); return;
       }
+      if (act === "keysx") return toggleKeys(false);
+      if (act === "obj-copy") { const o = A().OBJS[C.sel.rid]; if (o) { const txt = o.c[1].toFixed(5) + ", " + o.c[0].toFixed(5); (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => say("Координати скопійовано: " + txt, "ok"), () => say("Не вдалося скопіювати координати", "warn")); } return; }
+      const pre = t.closest("[data-pre]"); if (pre) { const P = PRESETS[pre.dataset.pre]; for (const k of OV_KEYS) { OV[k] = !!P[k]; lsSet("cmd." + k, OV[k] ? "1" : "0"); } C.sig = ""; renderLayers(); say("Пресет: " + pre.textContent.trim(), "info"); return; }
       if (act === "obj-focus") { const o = A().OBJS[C.sel.rid]; if (o) fly(o.c, 7.5); return; }
-      if (act === "logcopy") { const txt = C.log.map(e => e.t + "  " + e.x + (e.n > 1 ? " ×" + e.n : "")).join("\n"); (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => A().toast("Журнал скопійовано", "ok"), () => A().toast("Не вдалося скопіювати", "warn")); return; }
+      if (act === "logcopy") { const txt = C.log.map(e => e.t + "  " + e.x + (e.n > 1 ? " ×" + e.n : "")).join("\n"); (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => say("Журнал скопійовано", "ok"), () => say("Не вдалося скопіювати", "warn")); return; }
       if (act === "logsave") { const txt = C.log.map(e => e.t + "  " + e.x + (e.n > 1 ? " ×" + e.n : "")).join("\n"), l = document.createElement("a"); l.href = URL.createObjectURL(new Blob([txt], { type: "text/plain;charset=utf-8" })); l.download = "skydominion-log.txt"; l.click(); setTimeout(() => URL.revokeObjectURL(l.href), 2000); return; }
       if (act === "logclr") { C.log = []; C.logNew = 0; C.sig = ""; renderDrawer(true); renderTicker(); return; }
       const thf = t.closest("[data-thf]"); if (thf) { C.thrFilter = thf.dataset.thf; C.sig = ""; return renderDrawer(true); }
@@ -489,7 +558,7 @@
       if (t.closest("[data-mfs]")) { toggleMenu(false); try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); } catch (er) { /* */ } return; }
     });
     root.addEventListener("input", e => {
-      if (e.target.id === "cdQ") { C.objQ = e.target.value; C.sig = ""; renderObjs(true); } else if (e.target.id === "cdLQ") { C.logQ = e.target.value; C.sig = ""; renderLog(true); } else if (e.target.id === "cpIn") { palSel = 0; palRender(); }
+      if (e.target.id === "cdQ") { C.objQ = e.target.value; C.sig = ""; renderObjs(true); } else if (e.target.id === "cdLQ") { C.logQ = e.target.value; C.sig = ""; renderLog(true); } else if (e.target.id === "kpIn") { palSel = 0; palRender(); }
     });
     root.addEventListener("change", e => {
       const t = e.target, ov = t.dataset && t.dataset.ov;
@@ -498,7 +567,7 @@
     });
     root.addEventListener("mouseover", e => { const r = e.target.closest("[data-thr]"); C.hover = r ? r.dataset.thr : null; });
     root.addEventListener("mouseleave", () => { C.hover = null; });
-    $("cpIn").addEventListener("keydown", e => {
+    $("kpIn").addEventListener("keydown", e => {
       if (e.key === "ArrowDown") { palSel = Math.min(palSel + 1, palList.length - 1); palRender(); e.preventDefault(); } else if (e.key === "ArrowUp") { palSel = Math.max(0, palSel - 1); palRender(); e.preventDefault(); }
       else if (e.key === "Enter") { const r = palList[palSel]; togglePal(false); r && r.f(); } else if (e.key === "Escape") togglePal(false);
       e.stopPropagation();
@@ -528,13 +597,24 @@
     const lk = k.toLowerCase(), pre = () => { e.preventDefault(); e.stopPropagation(); };
     if (k === " ") { if (proxyClick('#gbBtns [data-s7="gmpause"]')) pre(); } else if (k === "1") { pre(); openTab("threat"); } else if (k === "2") { pre(); openTab("assets"); } else if (k === "3") { pre(); openTab("objs"); } else if (k === "4") { pre(); openTab("log"); } else if (k === "5") { pre(); openTab("layers"); }
     else if (k === "/" ) { pre(); togglePal(true); } else if (k === "?") { pre(); toggleKeys(); } else if (k === "]") { pre(); cycleThreat(1); } else if (k === "[") { pre(); cycleThreat(-1); }
-    else if (lk === "n") { pre(); const r = threatRows()[0]; r ? selectThreat(r.id, true) : A().toast("Немає виявлених цілей", "warn"); }
-    else if (lk === "f") { pre(); if (C.sel && C.sel.type === "thr" && typeof C.sel.id === "number" && window.BV_FOLLOW) window.BV_FOLLOW.start(C.sel.id); else A().toast("Оберіть ціль у списку обстановки", "warn"); }
+    else if (lk === "n") { pre(); const r = threatRows()[0]; r ? selectThreat(r.id, true) : say("Немає виявлених цілей", "warn"); }
+    else if (lk === "f") { pre(); if (C.sel && C.sel.type === "thr" && typeof C.sel.id === "number" && window.BV_FOLLOW) window.BV_FOLLOW.start(C.sel.id); else say("Оберіть ціль у списку обстановки", "warn"); }
     else if (k === "Home") { pre(); overview(); }
     else if (lk === "g") { pre(); tgl("grid"); } else if (lk === "z") { pre(); tgl("cover"); } else if (lk === "r") { pre(); tgl("detect"); } else if (lk === "v") { pre(); tgl("vec"); } else if (lk === "t") { pre(); tgl("trail"); }
     else if (lk === "m") { pre(); C.mini = !C.mini; lsSet("cmd.mini", C.mini ? "1" : "0"); applyMini(); }
+    else if (lk === "b") { pre(); tgl("lbl"); }
+    else if (lk === "c") { pre(); const p = selPos(); if (p) fly(p, 7.5); else say("Спершу оберіть ціль, техніку або об'єкт", "warn"); }
+    else if (k === "+" || k === "=") { pre(); const m = A().map; if (m) m.easeTo({ zoom: m.getZoom() + 1, duration: 260 }); }
+    else if (k === "-" || k === "_" || k === "−") { pre(); const m = A().map; if (m) m.easeTo({ zoom: m.getZoom() - 1, duration: 260 }); }
   }
-  function tgl(k) { OV[k] = !OV[k]; lsSet("cmd." + k, OV[k] ? "1" : "0"); C.sig = ""; if (C.tab === "layers") renderLayers(); A().toast((OV[k] ? "Увімкнено: " : "Вимкнено: ") + ({ grid: "сітка координат", cover: "зони прикриття ППО", detect: "виявлення РЛС", vec: "вектори загроз", trail: "сліди руху", lbl: "підписи" })[k], "info"); }
+  function selPos() {
+    const s = C.sel, a = A(); if (!s) return null;
+    if (s.type === "thr") { const t = C.thr.find(x => x.id === s.id); return t ? t.pos : null; }
+    if (s.type === "ad") { const u = a.ADS.units.get(s.rid); return u ? u.pos : null; }
+    if (s.type === "obj") { const o = a.OBJS[s.rid]; return o ? o.c : null; }
+    return null;
+  }
+  function tgl(k) { OV[k] = !OV[k]; lsSet("cmd." + k, OV[k] ? "1" : "0"); C.sig = ""; if (C.tab === "layers") renderLayers(); say((OV[k] ? "Увімкнено: " : "Вимкнено: ") + ({ grid: "сітка координат", cover: "зони прикриття ППО", detect: "виявлення РЛС", vec: "вектори загроз", trail: "сліди руху", lbl: "підписи цілей" })[k], "info"); }
 
   /* наведення / клацання по цілях на мапі */
   function nearestHit(x, y, r) { let best = null, bd = r * r; for (const h of C.hit) { const d = (h.x - x) * (h.x - x) + (h.y - y) * (h.y - y); if (d < bd) { bd = d; best = h; } } return best; }
@@ -555,14 +635,14 @@
   /* ------------------------------------------------------------------ оверлей карти (canvas) */
   let ovc = null, g = null, W = 0, H = 0, dpr = 1;
   function sizeOv() { ovc = $("cmdOv"); dpr = Math.min(window.devicePixelRatio || 1, 2); W = window.innerWidth; H = window.innerHeight; ovc.width = Math.round(W * dpr); ovc.height = Math.round(H * dpr); ovc.style.width = W + "px"; ovc.style.height = H + "px"; g = ovc.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); }
-  const SIDE_COL = { ua: [61, 155, 255], ru: [255, 77, 63] };
+  const SIDE_COL = { ua: [77, 163, 255], ru: [255, 91, 77] };
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   function kmToPx(map, c, km) { const p0 = map.project(c), p1 = map.project([c[0] + km / (111.32 * Math.cos(c[1] * D2R)), c[1]]); return Math.abs(p1.x - p0.x); }
 
   function drawGrid(map) {
     const z = map.getZoom(), step = z < 4.2 ? 10 : z < 5.6 ? 5 : z < 7.2 ? 2 : z < 9 ? 1 : 0.5;
     const b = map.getBounds(), w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-    g.save(); g.lineWidth = 1; g.strokeStyle = "rgba(140,180,255,.11)"; g.fillStyle = "rgba(160,190,235,.55)"; g.font = "600 10px ui-monospace,Menlo,monospace";
+    g.save(); g.lineWidth = 1; g.strokeStyle = "rgba(160,186,224,.07)"; g.fillStyle = "rgba(160,190,235,.42)"; g.font = "600 10px ui-monospace,Menlo,monospace";
     g.beginPath();
     for (let lo = Math.ceil(w / step) * step; lo <= e; lo += step) { const a = map.project([lo, n]), c = map.project([lo, s]); g.moveTo(Math.round(a.x) + .5, 0); g.lineTo(Math.round(c.x) + .5, H); }
     for (let la = Math.ceil(s / step) * step; la <= n; la += step) { const a = map.project([w, la]); g.moveTo(0, Math.round(a.y) + .5); g.lineTo(W, Math.round(a.y) + .5); }
@@ -614,10 +694,10 @@
       if (OV.vec && th.hdg != null && th.spd > 0) { const L = clamp(th.spd / 20, 14, 44), h = th.hdg * D2R; g.strokeStyle = rgba(col, .95); g.lineWidth = 1.5; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + Math.sin(h) * L, p.y - Math.cos(h) * L); g.stroke(); }
       // кільце загрози
       if (th.eta != null && th.eta < 30 && !th.carrier) { const k = (t / 500) % 1; g.strokeStyle = `rgba(255,77,63,${.7 * (1 - k)})`; g.lineWidth = 1.5; g.beginPath(); g.arc(p.x, p.y, 10 + k * 14, 0, 7); g.stroke(); }
-      if (hot) { g.strokeStyle = "#ffc83d"; g.lineWidth = 1.6; const r = 13; g.beginPath(); for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.moveTo(p.x + dx * r, p.y + dy * (r - 5)); g.lineTo(p.x + dx * r, p.y + dy * r); g.lineTo(p.x + dx * (r - 5), p.y + dy * r); } g.stroke(); }
+      if (hot) { g.strokeStyle = "#f2b53c"; g.lineWidth = 1.6; const r = 13; g.beginPath(); for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.moveTo(p.x + dx * r, p.y + dy * (r - 5)); g.lineTo(p.x + dx * r, p.y + dy * r); g.lineTo(p.x + dx * (r - 5), p.y + dy * r); } g.stroke(); }
       // підпис
       const cellK = Math.round(p.x / 70) + "," + Math.round(p.y / 22);
-      if (OV.lbl && (z >= 5.6 || hot) && (hot || !g._lb.has(cellK))) { g._lb.add(cellK); const txt = th.cs + (th.eta != null ? " " + fmtT(th.eta) : ""), w = g.measureText(txt).width + 10; g.fillStyle = "rgba(4,8,15,.78)"; g.fillRect(p.x + 12, p.y - 24, w, 15); g.strokeStyle = rgba(col, .6); g.lineWidth = 1; g.strokeRect(p.x + 12.5, p.y - 23.5, w, 15); g.fillStyle = hot ? "#ffe08a" : "#e8f0ff"; g.fillText(txt, p.x + 17, p.y - 16.5); }
+      if (OV.lbl && (z >= 5.6 || hot) && (hot || !g._lb.has(cellK))) { g._lb.add(cellK); const txt = th.cs + (th.eta != null ? " " + fmtT(th.eta) : ""), w = g.measureText(txt).width + 10; g.fillStyle = "rgba(4,8,15,.78)"; g.fillRect(p.x + 12, p.y - 24, w, 15); g.strokeStyle = rgba(col, .6); g.lineWidth = 1; g.strokeRect(p.x + 12.5, p.y - 23.5, w, 15); g.fillStyle = hot ? "#ffd98a" : "#e8f0ff"; g.fillText(txt, p.x + 17, p.y - 16.5); }
     }
     g.restore();
   }
@@ -641,7 +721,7 @@
   }
   function drawSelRing(map, t) {
     const s = C.sel; if (!s || s.type === "thr") return; let c = null; if (s.type === "ad") { const u = A().ADS.units.get(s.rid); c = u && u.pos; } else if (s.type === "obj") { const o = A().OBJS[s.rid]; c = o && o.c; } if (!c) return;
-    const p = map.project(c), k = (t / 900) % 1; g.save(); g.strokeStyle = "#ffc83d"; g.lineWidth = 1.6; g.beginPath(); g.arc(p.x, p.y, 16, 0, 7); g.stroke(); g.globalAlpha = 1 - k; g.beginPath(); g.arc(p.x, p.y, 16 + k * 14, 0, 7); g.stroke(); g.restore();
+    const p = map.project(c), k = (t / 900) % 1; g.save(); g.strokeStyle = "#f2b53c"; g.lineWidth = 1.6; g.beginPath(); g.arc(p.x, p.y, 16, 0, 7); g.stroke(); g.globalAlpha = 1 - k; g.beginPath(); g.arc(p.x, p.y, 16 + k * 14, 0, 7); g.stroke(); g.restore();
   }
   let lastDraw = 0;
   function frame(t) {
@@ -682,7 +762,7 @@
     for (const th of C.thr) { const q = mxy(th.pos), col = th.side === "ua" ? "#5fb0ff" : th.side === "ru" ? "#ff4d3f" : "#ffbe3c"; m.fillStyle = col; m.beginPath(); m.arc(q[0], q[1], th.carrier ? 2.4 : 1.8, 0, 7); m.fill(); if (th.eta != null && th.eta < 30) { m.strokeStyle = "rgba(255,77,63,.7)"; m.beginPath(); m.arc(q[0], q[1], 3 + (t / 120) % 4, 0, 7); m.stroke(); } }
     for (const f of C.flashes) { const q = mxy(f.pos); m.strokeStyle = f.kind === "kill" ? "#35dc96" : "#ff4d3f"; m.beginPath(); m.arc(q[0], q[1], 2 + ((performance.now() - f.t0) / 140) % 6, 0, 7); m.stroke(); }
     // видима область
-    const map = a.map; if (map) { const b = map.getBounds(), p0 = mxy([b.getWest(), b.getNorth()]), p1 = mxy([b.getEast(), b.getSouth()]); m.strokeStyle = "#ffc83d"; m.lineWidth = 1.2; m.strokeRect(Math.max(.5, p0[0]), Math.max(.5, p0[1]), Math.min(mw - 1, p1[0]) - Math.max(.5, p0[0]), Math.min(mh - 1, p1[1]) - Math.max(.5, p0[1])); }
+    const map = a.map; if (map) { const b = map.getBounds(), p0 = mxy([b.getWest(), b.getNorth()]), p1 = mxy([b.getEast(), b.getSouth()]); m.strokeStyle = "#f2b53c"; m.lineWidth = 1.2; m.strokeRect(Math.max(.5, p0[0]), Math.max(.5, p0[1]), Math.min(mw - 1, p1[0]) - Math.max(.5, p0[0]), Math.min(mh - 1, p1[1]) - Math.max(.5, p0[1])); }
   }
   function miniWire() {
     const cv = $("cmdMiniC"); let drag = false;
@@ -693,10 +773,13 @@
 
   /* ------------------------------------------------------------------ головний цикл */
   let tickN = 0;
+  function syncTips() {
+    document.querySelectorAll("#controls .btn").forEach(b => { const t = b.getAttribute("aria-label") || b._tip || ""; if (t) { b.dataset.tip = t; if (b.title) { b._tip = b.title; b.removeAttribute("title"); } } else if (b.title) { b._tip = b.title; b.dataset.tip = b.title; b.removeAttribute("title"); } });
+  }
   function tick() {
     if (!body.classList.contains("s7-game")) return; const a = A(); if (!a || !a.GAME.on) return;
     C.thr = collectThreats(); C.thr.forEach(t => { if (t.fog) t.cs = t.cs; });
-    renderTop(); renderAlert(); renderTicker(); updBadges();
+    syncTips(); renderTop(); renderAlert(); renderTicker(); updBadges();
     if (C.tab && (tickN % 2 === 0 || C.tab === "threat")) renderDrawer(false);
     if (C.sel) { if (C.sel.type === "thr" && !C.thr.some(t => t.id === C.sel.id)) { setSel(null); } else if (tickN % 2 === 0) renderInsp(); }
     tickN++;

@@ -14386,11 +14386,16 @@ window.BV_NET = NET;
 const LOBBY_ID = "skydominion-lobby-v7", UPFX = "bv2u-", RPFX = "bv2r-";
 const PEER_LIBS = ["https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js", "https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js",
                    "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"];
-const nsend = (c, m) => { try { if (c && c.open) c.send(m); } catch (e) {} };
+const NETSTAT = { tx: 0, hold: 0, drop: 0, rtt: 0, rttMax: 0 };
+window.BV_NETSTAT = NETSTAT;
+const nsend = (c, m) => { try { if (c && c.open){ c.send(m); NETSTAT.tx++; return true; } } catch (e) { NETSTAT.drop++; } return false; };
+/* черга WebRTC-каналу: якщо канал не встигає, нові знімки лише збільшують затримку — не шлемо, доки не звільниться */
+const congested = c => { try { const dc = c && c.dataChannel; return !!dc && dc.bufferedAmount > 196608; } catch (e) { return false; } };
 const clipT = (s, n) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, n);
 const cleanProf = p => ({ id: /^[A-Z0-9]{8}$/.test(p && p.id) ? p.id : "????????", name: clipT(p && p.name, 22) || "Командир", xp: Math.max(0, Math.min(1e8, +(p && p.xp) || 0)), rp: Math.max(0, Math.min(1e8, +(p && p.rp) || 0)) });
 function netStatus(st, txt){ NET.st = st; NET.txt = txt; S7.ui && S7.ui.net(); }
-const mkPeer = id => NET.kind === "local" ? new LocalPeer(id) : new NET.Peer(id, { debug: 0 });
+const ICE_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:global.stun.twilio.com:3478" }], iceCandidatePoolSize: 2 };
+const mkPeer = id => NET.kind === "local" ? new LocalPeer(id) : new NET.Peer(id, { debug: 0, config: ICE_CFG });
 const isOnline = id => id === PROF.id || NET.lob.state.online.includes(id) || siteOnline(id);      // етап 7.45: і за даними сервера сайту
 const saveTours = () => lsSet("bv2-tours" + PKEY.slice(11), NET.tours);
 
@@ -14567,7 +14572,7 @@ function lobbyHb(){
   if (L.host) lobbyHostMsg(null, m); else nsend(L.conn, m);
   S7.site && S7.site.lobby && S7.site.lobby();      // етап 7.53: і на сервер сайту
 }
-setInterval(lobbyHb, 8000);
+setInterval(() => { if (GAME.on && GAME.ctx === "online" && !GAME.over) return; lobbyHb(); }, 8000);      // у бою лобі не потрібне — менше трафіку й роботи
 function lobbyHostMsg(c, m){
   if (!m || m.t !== "hb" || !m.pl) return;
   const R = NET.lob.reg, now = Date.now(), pl = cleanProf(m.pl);
@@ -14657,7 +14662,7 @@ function roomCreate(o){
     if (R.inviteAfter){ friendInvite(R.inviteAfter); R.inviteAfter = null; }
   });
   p.on("connection", c => {
-    const E = { c, eid: "e" + (++EIDN), role: null, prof: null, side: null, full: true };
+    const E = { c, eid: "e" + (++EIDN), role: null, prof: null, side: null, full: true, rx: performance.now() };
     R.conns.add(E); R.byEid.set(E.eid, E);
     c.on("data", m => roomHostMsg(R, E, m));
     c.on("close", () => roomHostDrop(R, E));
@@ -14668,7 +14673,12 @@ function roomCreate(o){
       try { p.destroy(); } catch (er) {} NET.room = null; roomCreate(Object.assign({}, o, { code: genCode() }));
     }
   });
-  R.tick = setInterval(() => { if (NET.room !== R){ clearInterval(R.tick); return; } R.hub.tick(); }, 2000);
+  R.tick = setInterval(() => {
+    if (NET.room !== R){ clearInterval(R.tick); return; }
+    R.hub.tick();
+    const nw = performance.now();      // сторож власника: гість мовчить 25 с (хоча канал «відкритий») — вважаємо втраченим
+    for (const E of [...R.conns]) if (!E.dead && E.rx && nw - E.rx > 25000){ try { E.c.close(); } catch (e) {} roomHostDrop(R, E); }
+  }, 2000);
   return R;
 }
 const roomBroadcast = (R, m, exceptE) => { for (const E of R.conns) if (E !== exceptE && E.role) nsend(E.c, m); };
@@ -14698,6 +14708,8 @@ function roomRecv(R, m){
 }
 function roomHostMsg(R, E, m){
   if (!m || typeof m !== "object" || NET.room !== R || E.dead) return;
+  E.rx = performance.now();
+  if (m.t === "png"){ nsend(E.c, { t: "pog", n: m.n }); return; }
   if (m.t === "hello"){
     const prof = cleanProf(m.prof), res = R.hub.hello(E.eid, { role: m.role === "spec" ? "spec" : "player", prof, side: m.side === "ua" || m.side === "ru" ? m.side : null });
     if (!res.ok) return;
@@ -14798,7 +14810,12 @@ function roomJoin(code, role, tries, recover){
     if (S7.joining !== code){ try { c.close(); } catch (e) {} return; }
     S7.joining = null;
     const R = { code, host: false, conn: c, role, side: null, info: null, chat: [], ok: false, recover: !!recover };
-    NET.room = R;
+    NET.room = R; R.lastRx = performance.now();
+    R.hbT = setInterval(() => {      // сердцебиття: ping кожні 2 с; 8 с тиші = канал мертвий → швидке відновлення сесії замість «зависання»
+      if (NET.room !== R){ clearInterval(R.hbT); return; }
+      nsend(c, { t: "png", n: Date.now() });
+      if (performance.now() - R.lastRx > 8000){ clearInterval(R.hbT); NETSTAT.drop++; try { c.close(); } catch (e) {} roomGuestClosed(R); }
+    }, 2000);
     c.on("data", m => roomGuestMsg(R, m));
     c.on("close", () => roomGuestClosed(R));
     nsend(c, { t: "hello", role, prof: profPub() });
@@ -14812,6 +14829,8 @@ function roomJoin(code, role, tries, recover){
 }
 function roomGuestMsg(R, m){
   if (!m || NET.room !== R) return;
+  R.lastRx = performance.now();
+  if (m.t === "pog"){ const d = Date.now() - m.n; if (d >= 0 && d < 20000){ NETSTAT.rtt = NETSTAT.rtt ? NETSTAT.rtt * 0.7 + d * 0.3 : d; NETSTAT.rttMax = Math.max(NETSTAT.rttMax * 0.98, d); } return; }
   if (roomRecv(R, m)) return;
   switch (m.t){
     case "welcome": R.ok = true; R.role = m.role; R.side = m.side; R.info = m.r; R.chat = m.chat || [];
@@ -15108,22 +15127,48 @@ function snapBuild(full, sk){
 const gpub = () => ({ fog: GAME.fog ? 1 : 0, mode: GAME.mode, phase: GAME.phase, clock: r2(GAME.clock), start: GAME.start, end: GAME.end, prepLeft: r2(GAME.prepLeft), ready: GAME.ready, round: GAME.round,
   attacker: GAME.attacker, stock: GAME.stock, ads: GAME.ads, eco: GAME.eco,
   st: GAME.st, obj: GAME.obj.map(v => r2(v)), objVer: GAME.objVer, days: GAME.days, tempo: GAME.tempo, rwin: GAME.rwin });
+/* дельта-кодування «повільного» стану для кожного одержувача: g (табло, склади, економіка), T/Td (ПУ), AV (авіація) — не частіше, ніж вони змінюються.
+   Було: ~8 з 11 КБ кожного знімка (10 раз/с) — той самий незмінний стан. Кеш — на з'єднанні, тож спільний знімок не «з'їдає» зміни іншого одержувача. */
+function snapDelta(E, m, full){
+  const C = E.sc || (E.sc = {});
+  if (full) for (const k in C) delete C[k];
+  const out = Object.assign({}, m);
+  if (m.g){
+    const g = {};
+    for (const k in m.g){ const j = JSON.stringify(m.g[k]); const ck = "g." + k; if (full || C[ck] !== j){ C[ck] = j; g[k] = m.g[k]; } }
+    out.g = g;
+  }
+  if ("AV" in m){ const j = JSON.stringify(m.AV); if (!full && C.AV === j) delete out.AV; else C.AV = j; }
+  if ("T" in m || "Td" in m){ const j = JSON.stringify([m.T, m.Td]); if (!full && C.T === j){ delete out.T; delete out.Td; } else C.T = j; }
+  return out;
+}
 let snapLast = 0;
 setInterval(() => {
   const R = NET.room;
   if (!R || !R.host || !GAME.on || GAME.puppet || R.status !== "game" || !R.conns.size) { NETEV = []; return; }
   const nowS = performance.now();
-  if (nowS - snapLast < (units.size > 250 ? 150 : 100) - 8) return;      // адаптивна частота знімків: 10 Гц (було 6,7 Гц), при великих боях 6,7 Гц
+  if (nowS - snapLast < (units.size > 250 ? 150 : 100) - 8) return;
+  // протитиск: гравець із переповненим каналом — пропускаємо такт (події лишаються в черзі), глядача просто переводимо на повний знімок
+  let hold = false;
+  for (const E of R.conns){ if (!E.role || !congested(E.c)) continue; if (E.role === "player") hold = true; else E.full = true; }
+  if (hold){
+    NETSTAT.hold++; R.holdSince = R.holdSince || nowS;
+    if (NETEV.length > 500) NETEV = NETEV.slice(-250);
+    if (nowS - R.holdSince > 4000){ for (const E of R.conns) if (E.role === "player") E.full = true; }      // довга затримка → після розвантаження повний знімок
+    return;
+  }
+  R.holdSince = 0;      // адаптивна частота знімків: 10 Гц (було 6,7 Гц), при великих боях 6,7 Гц
   snapLast = nowS;
   const ev = NETEV; NETEV = [];
   const incS = {}, fullS = {};
   for (const E of R.conns){
     if (!E.role) continue;
-    const sk = fogSnapKey(E);
+    if (E.role !== "player" && congested(E.c)){ E.full = true; continue; }
+    const sk = fogSnapKey(E), wasFull = !!E.full;
     let m;
     if (E.full){ m = fullS[sk] = fullS[sk] || Object.assign(snapBuild(true, sk), { ev }); E.full = false; }
     else m = incS[sk] = incS[sk] || Object.assign(snapBuild(false, sk), { ev });
-    nsend(E.c, teamSnapFor(E, m));      // етап 6: приховування даних ворога
+    nsend(E.c, snapDelta(E, teamSnapFor(E, m), wasFull));      // етап 6: приховування даних ворога; потім — лише те, що змінилося для цього одержувача
   }
   for (const sk in fullS) if (!incS[sk]) snapBuild(false, sk);
 }, 50);
@@ -15134,7 +15179,7 @@ const lerp2 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
 const lerpA = (a, b, k) => (a + ((((b - a) % 360) + 540) % 360 - 180) * k + 360) % 360;
 function applySnap(m){
   const now = performance.now();
-  SNAP.iv = Math.max(90, Math.min(400, now - SNAP.tRecv || 150)); SNAP.tRecv = now;
+  SNAP.iv = Math.max(90, Math.min(400, SNAP.iv * 0.7 + (now - SNAP.tRecv || 150) * 0.3)); SNAP.tRecv = now;
   // повітряні цілі й носії
   const seen = new Set();
   for (const a of m.u || []){
@@ -15152,8 +15197,8 @@ function applySnap(m){
   }
   for (const id of [...units.keys()]) if (!seen.has(id)) units.delete(id);
   if (m.F) FOG.guest = { side: m.fs, list: m.F }; else FOG.guest = { side: null, list: [] };      // етап 7.60
-  TEL.guest = Array.isArray(m.T) ? m.T.map(telUnwire) : []; TEL.depotG = m.Td || null; TEL.dirty = true;      // етап 7.66
-  if (window.BV_AVIA) window.BV_AVIA.setGuest(Array.isArray(m.AV) ? m.AV : null);      // етап 4
+  if ("T" in m || "Td" in m){ TEL.guest = Array.isArray(m.T) ? m.T.map(telUnwire) : []; TEL.depotG = m.Td || null; TEL.dirty = true; }      // етап 7.66 (приходить лише при зміні)
+  if (window.BV_AVIA && ("AV" in m || !GAME.avSeen)){ GAME.avSeen = 1; window.BV_AVIA.setGuest(Array.isArray(m.AV) ? m.AV : null); }      // етап 4 (приходить лише при зміні)
   // ППО
   const sa = new Set();
   for (const a of m.a || []){
@@ -15206,7 +15251,7 @@ function applySnap(m){
 }
 HOOKS.puppet = () => GAME.on && GAME.puppet;
 HOOKS.netInterp = (now, dt) => {
-  const k = Math.min(1, (now - SNAP.tRecv) / SNAP.iv);
+  const k = Math.min(1.5, (now - SNAP.tRecv) / SNAP.iv);      // до 1,5: при запізненні знімка рух триває, а не завмирає
   for (const u of units.values()) if (u._p1){ u.pos = lerp2(u._p0, u._p1, k); u.hdg = lerpA(u._h0, u._h1, k); }
   for (const a of ADS.units.values()) if (a._p1){ a.pos = lerp2(a._p0, a._p1, k); a.hdg = lerpA(a._h0 || 0, a._h1 || 0, k); }
   for (const s of ADS.shots) if (s._p1){
