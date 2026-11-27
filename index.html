@@ -22546,11 +22546,16 @@ window.BV_NET = NET;
 const LOBBY_ID = "skydominion-lobby-v7", UPFX = "bv2u-", RPFX = "bv2r-";
 const PEER_LIBS = ["https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js", "https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js",
                    "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"];
-const nsend = (c, m) => { try { if (c && c.open) c.send(m); } catch (e) {} };
+const NETSTAT = { tx: 0, hold: 0, drop: 0, rtt: 0, rttMax: 0 };
+window.BV_NETSTAT = NETSTAT;
+const nsend = (c, m) => { try { if (c && c.open){ c.send(m); NETSTAT.tx++; return true; } } catch (e) { NETSTAT.drop++; } return false; };
+/* черга WebRTC-каналу: якщо канал не встигає, нові знімки лише збільшують затримку — не шлемо, доки не звільниться */
+const congested = c => { try { const dc = c && c.dataChannel; return !!dc && dc.bufferedAmount > 196608; } catch (e) { return false; } };
 const clipT = (s, n) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, n);
 const cleanProf = p => ({ id: /^[A-Z0-9]{8}$/.test(p && p.id) ? p.id : "????????", name: clipT(p && p.name, 22) || "Командир", xp: Math.max(0, Math.min(1e8, +(p && p.xp) || 0)), rp: Math.max(0, Math.min(1e8, +(p && p.rp) || 0)) });
 function netStatus(st, txt){ NET.st = st; NET.txt = txt; S7.ui && S7.ui.net(); }
-const mkPeer = id => NET.kind === "local" ? new LocalPeer(id) : new NET.Peer(id, { debug: 0 });
+const ICE_CFG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }, { urls: "stun:stun.cloudflare.com:3478" }, { urls: "stun:global.stun.twilio.com:3478" }], iceCandidatePoolSize: 2 };
+const mkPeer = id => NET.kind === "local" ? new LocalPeer(id) : new NET.Peer(id, { debug: 0, config: ICE_CFG });
 const isOnline = id => id === PROF.id || NET.lob.state.online.includes(id) || siteOnline(id);      // етап 7.45: і за даними сервера сайту
 const saveTours = () => lsSet("bv2-tours" + PKEY.slice(11), NET.tours);
 
@@ -22727,7 +22732,7 @@ function lobbyHb(){
   if (L.host) lobbyHostMsg(null, m); else nsend(L.conn, m);
   S7.site && S7.site.lobby && S7.site.lobby();      // етап 7.53: і на сервер сайту
 }
-setInterval(lobbyHb, 8000);
+setInterval(() => { if (GAME.on && GAME.ctx === "online" && !GAME.over) return; lobbyHb(); }, 8000);      // у бою лобі не потрібне — менше трафіку й роботи
 function lobbyHostMsg(c, m){
   if (!m || m.t !== "hb" || !m.pl) return;
   const R = NET.lob.reg, now = Date.now(), pl = cleanProf(m.pl);
@@ -22817,7 +22822,7 @@ function roomCreate(o){
     if (R.inviteAfter){ friendInvite(R.inviteAfter); R.inviteAfter = null; }
   });
   p.on("connection", c => {
-    const E = { c, eid: "e" + (++EIDN), role: null, prof: null, side: null, full: true };
+    const E = { c, eid: "e" + (++EIDN), role: null, prof: null, side: null, full: true, rx: performance.now() };
     R.conns.add(E); R.byEid.set(E.eid, E);
     c.on("data", m => roomHostMsg(R, E, m));
     c.on("close", () => roomHostDrop(R, E));
@@ -22828,7 +22833,12 @@ function roomCreate(o){
       try { p.destroy(); } catch (er) {} NET.room = null; roomCreate(Object.assign({}, o, { code: genCode() }));
     }
   });
-  R.tick = setInterval(() => { if (NET.room !== R){ clearInterval(R.tick); return; } R.hub.tick(); }, 2000);
+  R.tick = setInterval(() => {
+    if (NET.room !== R){ clearInterval(R.tick); return; }
+    R.hub.tick();
+    const nw = performance.now();      // сторож власника: гість мовчить 25 с (хоча канал «відкритий») — вважаємо втраченим
+    for (const E of [...R.conns]) if (!E.dead && E.rx && nw - E.rx > 25000){ try { E.c.close(); } catch (e) {} roomHostDrop(R, E); }
+  }, 2000);
   return R;
 }
 const roomBroadcast = (R, m, exceptE) => { for (const E of R.conns) if (E !== exceptE && E.role) nsend(E.c, m); };
@@ -22858,6 +22868,8 @@ function roomRecv(R, m){
 }
 function roomHostMsg(R, E, m){
   if (!m || typeof m !== "object" || NET.room !== R || E.dead) return;
+  E.rx = performance.now();
+  if (m.t === "png"){ nsend(E.c, { t: "pog", n: m.n }); return; }
   if (m.t === "hello"){
     const prof = cleanProf(m.prof), res = R.hub.hello(E.eid, { role: m.role === "spec" ? "spec" : "player", prof, side: m.side === "ua" || m.side === "ru" ? m.side : null });
     if (!res.ok) return;
@@ -22958,7 +22970,12 @@ function roomJoin(code, role, tries, recover){
     if (S7.joining !== code){ try { c.close(); } catch (e) {} return; }
     S7.joining = null;
     const R = { code, host: false, conn: c, role, side: null, info: null, chat: [], ok: false, recover: !!recover };
-    NET.room = R;
+    NET.room = R; R.lastRx = performance.now();
+    R.hbT = setInterval(() => {      // сердцебиття: ping кожні 2 с; 8 с тиші = канал мертвий → швидке відновлення сесії замість «зависання»
+      if (NET.room !== R){ clearInterval(R.hbT); return; }
+      nsend(c, { t: "png", n: Date.now() });
+      if (performance.now() - R.lastRx > 8000){ clearInterval(R.hbT); NETSTAT.drop++; try { c.close(); } catch (e) {} roomGuestClosed(R); }
+    }, 2000);
     c.on("data", m => roomGuestMsg(R, m));
     c.on("close", () => roomGuestClosed(R));
     nsend(c, { t: "hello", role, prof: profPub() });
@@ -22972,6 +22989,8 @@ function roomJoin(code, role, tries, recover){
 }
 function roomGuestMsg(R, m){
   if (!m || NET.room !== R) return;
+  R.lastRx = performance.now();
+  if (m.t === "pog"){ const d = Date.now() - m.n; if (d >= 0 && d < 20000){ NETSTAT.rtt = NETSTAT.rtt ? NETSTAT.rtt * 0.7 + d * 0.3 : d; NETSTAT.rttMax = Math.max(NETSTAT.rttMax * 0.98, d); } return; }
   if (roomRecv(R, m)) return;
   switch (m.t){
     case "welcome": R.ok = true; R.role = m.role; R.side = m.side; R.info = m.r; R.chat = m.chat || [];
@@ -23268,22 +23287,48 @@ function snapBuild(full, sk){
 const gpub = () => ({ fog: GAME.fog ? 1 : 0, mode: GAME.mode, phase: GAME.phase, clock: r2(GAME.clock), start: GAME.start, end: GAME.end, prepLeft: r2(GAME.prepLeft), ready: GAME.ready, round: GAME.round,
   attacker: GAME.attacker, stock: GAME.stock, ads: GAME.ads, eco: GAME.eco,
   st: GAME.st, obj: GAME.obj.map(v => r2(v)), objVer: GAME.objVer, days: GAME.days, tempo: GAME.tempo, rwin: GAME.rwin });
+/* дельта-кодування «повільного» стану для кожного одержувача: g (табло, склади, економіка), T/Td (ПУ), AV (авіація) — не частіше, ніж вони змінюються.
+   Було: ~8 з 11 КБ кожного знімка (10 раз/с) — той самий незмінний стан. Кеш — на з'єднанні, тож спільний знімок не «з'їдає» зміни іншого одержувача. */
+function snapDelta(E, m, full){
+  const C = E.sc || (E.sc = {});
+  if (full) for (const k in C) delete C[k];
+  const out = Object.assign({}, m);
+  if (m.g){
+    const g = {};
+    for (const k in m.g){ const j = JSON.stringify(m.g[k]); const ck = "g." + k; if (full || C[ck] !== j){ C[ck] = j; g[k] = m.g[k]; } }
+    out.g = g;
+  }
+  if ("AV" in m){ const j = JSON.stringify(m.AV); if (!full && C.AV === j) delete out.AV; else C.AV = j; }
+  if ("T" in m || "Td" in m){ const j = JSON.stringify([m.T, m.Td]); if (!full && C.T === j){ delete out.T; delete out.Td; } else C.T = j; }
+  return out;
+}
 let snapLast = 0;
 setInterval(() => {
   const R = NET.room;
   if (!R || !R.host || !GAME.on || GAME.puppet || R.status !== "game" || !R.conns.size) { NETEV = []; return; }
   const nowS = performance.now();
-  if (nowS - snapLast < (units.size > 250 ? 150 : 100) - 8) return;      // адаптивна частота знімків: 10 Гц (було 6,7 Гц), при великих боях 6,7 Гц
+  if (nowS - snapLast < (units.size > 250 ? 150 : 100) - 8) return;
+  // протитиск: гравець із переповненим каналом — пропускаємо такт (події лишаються в черзі), глядача просто переводимо на повний знімок
+  let hold = false;
+  for (const E of R.conns){ if (!E.role || !congested(E.c)) continue; if (E.role === "player") hold = true; else E.full = true; }
+  if (hold){
+    NETSTAT.hold++; R.holdSince = R.holdSince || nowS;
+    if (NETEV.length > 500) NETEV = NETEV.slice(-250);
+    if (nowS - R.holdSince > 4000){ for (const E of R.conns) if (E.role === "player") E.full = true; }      // довга затримка → після розвантаження повний знімок
+    return;
+  }
+  R.holdSince = 0;      // адаптивна частота знімків: 10 Гц (було 6,7 Гц), при великих боях 6,7 Гц
   snapLast = nowS;
   const ev = NETEV; NETEV = [];
   const incS = {}, fullS = {};
   for (const E of R.conns){
     if (!E.role) continue;
-    const sk = fogSnapKey(E);
+    if (E.role !== "player" && congested(E.c)){ E.full = true; continue; }
+    const sk = fogSnapKey(E), wasFull = !!E.full;
     let m;
     if (E.full){ m = fullS[sk] = fullS[sk] || Object.assign(snapBuild(true, sk), { ev }); E.full = false; }
     else m = incS[sk] = incS[sk] || Object.assign(snapBuild(false, sk), { ev });
-    nsend(E.c, teamSnapFor(E, m));      // етап 6: приховування даних ворога
+    nsend(E.c, snapDelta(E, teamSnapFor(E, m), wasFull));      // етап 6: приховування даних ворога; потім — лише те, що змінилося для цього одержувача
   }
   for (const sk in fullS) if (!incS[sk]) snapBuild(false, sk);
 }, 50);
@@ -23294,7 +23339,7 @@ const lerp2 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
 const lerpA = (a, b, k) => (a + ((((b - a) % 360) + 540) % 360 - 180) * k + 360) % 360;
 function applySnap(m){
   const now = performance.now();
-  SNAP.iv = Math.max(90, Math.min(400, now - SNAP.tRecv || 150)); SNAP.tRecv = now;
+  SNAP.iv = Math.max(90, Math.min(400, SNAP.iv * 0.7 + (now - SNAP.tRecv || 150) * 0.3)); SNAP.tRecv = now;
   // повітряні цілі й носії
   const seen = new Set();
   for (const a of m.u || []){
@@ -23312,8 +23357,8 @@ function applySnap(m){
   }
   for (const id of [...units.keys()]) if (!seen.has(id)) units.delete(id);
   if (m.F) FOG.guest = { side: m.fs, list: m.F }; else FOG.guest = { side: null, list: [] };      // етап 7.60
-  TEL.guest = Array.isArray(m.T) ? m.T.map(telUnwire) : []; TEL.depotG = m.Td || null; TEL.dirty = true;      // етап 7.66
-  if (window.BV_AVIA) window.BV_AVIA.setGuest(Array.isArray(m.AV) ? m.AV : null);      // етап 4
+  if ("T" in m || "Td" in m){ TEL.guest = Array.isArray(m.T) ? m.T.map(telUnwire) : []; TEL.depotG = m.Td || null; TEL.dirty = true; }      // етап 7.66 (приходить лише при зміні)
+  if (window.BV_AVIA && ("AV" in m || !GAME.avSeen)){ GAME.avSeen = 1; window.BV_AVIA.setGuest(Array.isArray(m.AV) ? m.AV : null); }      // етап 4 (приходить лише при зміні)
   // ППО
   const sa = new Set();
   for (const a of m.a || []){
@@ -23366,7 +23411,7 @@ function applySnap(m){
 }
 HOOKS.puppet = () => GAME.on && GAME.puppet;
 HOOKS.netInterp = (now, dt) => {
-  const k = Math.min(1, (now - SNAP.tRecv) / SNAP.iv);
+  const k = Math.min(1.5, (now - SNAP.tRecv) / SNAP.iv);      // до 1,5: при запізненні знімка рух триває, а не завмирає
   for (const u of units.values()) if (u._p1){ u.pos = lerp2(u._p0, u._p1, k); u.hdg = lerpA(u._h0, u._h1, k); }
   for (const a of ADS.units.values()) if (a._p1){ a.pos = lerp2(a._p0, a._p1, k); a.hdg = lerpA(a._h0 || 0, a._h1 || 0, k); }
   for (const s of ADS.shots) if (s._p1){
@@ -33883,271 +33928,478 @@ html body #loader .ld-top{text-shadow:0 1px 8px rgba(0,0,0,.9)}
 }
 
 </style>
-<style id="cmd-css">/* SKYDOMINION · COMMAND DECK — новий командний шар бойового екрана.
-   Концепція: «скляна палуба» — темний тактичний графіт, тонкі лінії-сітки, кутові скоби, моно-цифри телеметрії.
-   Сторони: Україна — лазур, Росія — сигнально-червоний; золото — вибір і головна дія.
-   Працює лише в бою (body.s7-game). Усі елементи керуються з cmd.js і прив'язані до реального стану гри (BV_API). */
+<style id="cmd-css">/* SKYDOMINION · COMMAND DECK v2 «AEGIS» — єдина дизайн-система бойового екрана.
+   Ідея: графітова «скляна палуба». Колір несе зміст, а не оздобу:
+     лазур — Україна, сигнально-червоний — Росія, бурштин — вибір і головна дія, зелений/жовтий/червоний — стан.
+   Типографіка: Exo 2 (заголовки, цифри з табличними знаками) + моно лише для годинника й координат.
+   Рух: лише відповідь на дію (відкрити, вибрати, підтвердити). Усе вимикається при prefers-reduced-motion.
+   Працює тільки в бою (body.s7-game); усі елементи керуються з 72_cmd.js і прив'язані до реального стану гри. */
+
 :root{
-  --k-bg:#04080f; --k-g1:rgba(6,12,22,.80); --k-g2:rgba(9,17,31,.94); --k-g3:rgba(14,26,46,.96);
-  --k-ln:rgba(140,180,255,.14); --k-ln2:rgba(140,180,255,.34); --k-ln3:rgba(140,180,255,.6);
-  --k-tx:#e8f0ff; --k-mut:#8499bb; --k-dim:#51627f;
-  --k-ua:#3d9bff; --k-ua2:#8cc8ff; --k-ru:#ff4d3f; --k-ru2:#ff9a90;
-  --k-gold:#ffc83d; --k-gold2:#ffe08a; --k-ok:#35dc96; --k-warn:#ffae1f; --k-bad:#ff4d3f; --k-cy:#46d2ff;
+  /* поверхні */
+  --k-bg:#05080d; --k-g1:rgba(10,15,23,.74); --k-g2:rgba(12,18,28,.93); --k-g3:rgba(17,25,38,.97);
+  --k-hi:rgba(255,255,255,.045);                 /* внутрішній верхній відблиск */
+  --k-ln:rgba(160,186,224,.10); --k-ln2:rgba(160,186,224,.20); --k-ln3:rgba(160,186,224,.38);
+  /* текст */
+  --k-tx:#e7edf6; --k-mut:#94a5bd; --k-dim:#5f7089;
+  /* сторони */
+  --k-ua:#4da3ff; --k-ua2:#a8d3ff; --k-ru:#ff5b4d; --k-ru2:#ffa79d;
+  /* акцент і стан */
+  --k-gold:#f2b53c; --k-gold2:#ffd98a; --k-ok:#3ddc97; --k-warn:#ffb020; --k-bad:#ff5b4d; --k-cy:#5cd6ff;
+  /* шрифти */
   --k-disp:'BV Display','Exo 2',system-ui,sans-serif; --k-txt:'BV Text','Exo 2',system-ui,sans-serif;
   --k-mono:ui-monospace,'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
-  --k-e:cubic-bezier(.2,.8,.2,1);
-  --k-top:46px; --k-rail:52px; --k-drawer:344px;
-  --k-sl:max(8px,env(safe-area-inset-left,0px)); --k-sr:max(8px,env(safe-area-inset-right,0px));
-  --k-st:max(6px,env(safe-area-inset-top,0px)); --k-sb:max(8px,env(safe-area-inset-bottom,0px));
+  /* форма й рух */
+  --k-r1:6px; --k-r2:10px; --k-r3:14px;
+  --k-e:cubic-bezier(.16,1,.3,1); --k-eio:cubic-bezier(.65,0,.35,1);
+  --k-t1:.12s; --k-t2:.2s; --k-t3:.32s;
+  /* розкладка */
+  --k-top:48px; --k-rail:52px; --k-drawer:372px; --k-gap:8px;
+  --k-sl:max(10px,env(safe-area-inset-left,0px)); --k-sr:max(10px,env(safe-area-inset-right,0px));
+  --k-st:max(8px,env(safe-area-inset-top,0px)); --k-sb:max(10px,env(safe-area-inset-bottom,0px));
 }
-/* синхронізація змінних старих панелей (пуск, ППО, завод) із новою розкладкою */
 html body.s7-game{--h-top:var(--k-top);--h-side:calc(var(--k-rail) + 2px);--h-log:34px}
 
-/* ---------- прибираємо старий HUD (замінено) ---------- */
+/* ---------- старий HUD замінено ---------- */
 body.s7-game #gmBar,body.s7-game #hudDock,body.s7-game #hudDockFold,body.s7-game #hudLog,body.s7-game #brand,body.s7-game #status{
   position:fixed!important;left:-9999px!important;top:0!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden}
 body:not(.s7-game) #cmd{display:none}
-#cmd{position:fixed;inset:0;z-index:12;pointer-events:none;font-family:var(--k-txt);color:var(--k-tx);-webkit-font-smoothing:antialiased}
+#cmd{position:fixed;inset:0;z-index:12;pointer-events:none;font-family:var(--k-txt);color:var(--k-tx);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 #cmd *{box-sizing:border-box}
 #cmd button{font-family:inherit;color:inherit;cursor:pointer}
-#cmd .k-pn{pointer-events:auto;background:var(--k-g1);border:1px solid var(--k-ln);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);
-  box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.04);border-radius:10px}
+#cmd button:focus-visible,#cmd input:focus-visible{outline:2px solid var(--k-gold);outline-offset:2px}
+#cmd input{font-family:inherit}
+
+/* базова панель: скло + тонкий верхній відблиск */
+#cmd .k-pn{pointer-events:auto;position:relative;background:linear-gradient(180deg,rgba(17,25,38,.80),rgba(9,14,22,.88));border:1px solid var(--k-ln);
+  backdrop-filter:blur(18px) saturate(1.35);-webkit-backdrop-filter:blur(18px) saturate(1.35);
+  box-shadow:inset 0 1px 0 var(--k-hi),0 18px 44px -14px rgba(0,0,0,.7),0 2px 6px rgba(0,0,0,.35);border-radius:var(--k-r3)}
 #cmd > .k-pn{position:absolute}
 #cmd .box.k-pn{position:relative}
-#cmdMiniOpen{right:var(--k-sr);bottom:calc(var(--k-sb) + 92px);width:34px;height:34px}
-/* кутові скоби */
-#cmd .k-br::before,#cmd .k-br::after{z-index:1;content:"";position:absolute;width:9px;height:9px;pointer-events:none;border:1.5px solid var(--k-gold);opacity:.85}
-#cmd .k-br::before{left:-1px;top:-1px;border-right:0;border-bottom:0;border-radius:10px 0 0 0}
-#cmd .k-br::after{right:-1px;bottom:-1px;border-left:0;border-top:0;border-radius:0 0 10px 0}
-.k-num{font-family:var(--k-mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.k-ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.k-num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.k-ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.k-kbd,#cmd kbd{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:5px;border:1px solid var(--k-ln2);border-bottom-width:2px;background:rgba(255,255,255,.04);
+  font:600 10.5px/1 var(--k-mono);color:var(--k-mut);white-space:nowrap}
 
-/* ---------- верхня командна смуга ---------- */
-#cmdTop{position:absolute;left:var(--k-sl);right:var(--k-sr);top:var(--k-st);height:var(--k-top);display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;padding:0 8px 0 12px;overflow:visible}
+/* ========================================================== ВЕРХНЯ СМУГА */
+#cmdTop{position:absolute;left:var(--k-sl);right:var(--k-sr);top:var(--k-st);height:var(--k-top);display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;padding:0 10px 0 12px;overflow:visible}
 #cmdTop .tl{display:flex;align-items:center;gap:12px;min-width:0}
-#cmdTop .mark{width:28px;height:28px;flex:0 0 auto}
-#cmdTop .nm{min-width:0;line-height:1.05}
-#cmdTop .nm b{display:block;font:italic 800 14px/1 var(--k-disp);letter-spacing:.06em;color:#fff;white-space:nowrap}
+#cmdTop .mark{width:30px;height:30px;flex:0 0 auto;filter:drop-shadow(0 0 10px rgba(242,181,60,.18))}
+#cmdTop .nm{min-width:0;line-height:1}
+#cmdTop .nm b{display:block;font:italic 800 14px/1 var(--k-disp);letter-spacing:.07em;color:#fff;white-space:nowrap}
 #cmdTop .nm b i{color:var(--k-gold);font-style:inherit}
-#cmdTop .nm small{display:block;margin-top:3px;font:600 10px/1 var(--k-txt);letter-spacing:.12em;text-transform:uppercase;color:var(--k-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:36vw}
-#cmdTop .ph{display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font:700 10px/1 var(--k-txt);letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--k-ln2);color:var(--k-cy);background:rgba(70,210,255,.07);white-space:nowrap}
-#cmdTop .ph::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor;animation:kPulse 1.6s infinite}
-#cmdTop .ph.prep{color:var(--k-gold);background:rgba(255,200,61,.08)}
-#cmdTop .ph.over{color:var(--k-mut);background:none}#cmdTop .ph.over::before{animation:none}
-#cmdTop .tc{display:flex;align-items:center;gap:10px}
-#cmdTop .pp{width:32px;height:32px;border-radius:8px;border:1px solid var(--k-ln2);background:rgba(255,255,255,.04);display:grid;place-items:center;transition:background .15s,border-color .15s,transform .1s}
-#cmdTop .pp:hover{background:rgba(255,200,61,.12);border-color:var(--k-gold)}
-#cmdTop .pp:active{transform:scale(.93)}
-#cmdTop .pp[disabled]{opacity:.35;pointer-events:none}
-#cmdTop .clk{display:flex;flex-direction:column;align-items:center;min-width:92px;line-height:1}
-#cmdTop .clk .t{font:700 22px/1 var(--k-mono);letter-spacing:.02em;color:#fff}
-#cmdTop .clk .d{margin-top:4px;font:600 9px/1 var(--k-txt);letter-spacing:.16em;color:var(--k-mut);text-transform:uppercase;white-space:nowrap}
-#cmdTop .prg{position:absolute;left:12px;right:12px;bottom:-1px;height:2px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
-#cmdTop .prg i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--k-ua),var(--k-gold),var(--k-ru));transition:width .6s linear}
-#cmdTop .sc{display:flex;align-items:center;gap:2px;font:800 15px/1 var(--k-mono)}
-#cmdTop .sc span{min-width:34px;height:28px;display:grid;place-items:center;border-radius:6px;padding:0 6px}
-#cmdTop .sc .ua{color:var(--k-ua2);background:rgba(61,155,255,.14);box-shadow:inset 0 0 0 1px rgba(61,155,255,.35)}
-#cmdTop .sc .ru{color:var(--k-ru2);background:rgba(255,77,63,.14);box-shadow:inset 0 0 0 1px rgba(255,77,63,.35)}
-#cmdTop .sc em{font-style:normal;color:var(--k-dim);padding:0 3px}
-#cmdTop .tr{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
-#cmdTop .mny{display:flex;flex-direction:column;align-items:flex-end;line-height:1;padding:0 8px}
-#cmdTop .mny b{font:700 13px/1 var(--k-mono);color:var(--k-gold)}
-#cmdTop .mny small{margin-top:3px;font:600 9px/1 var(--k-txt);letter-spacing:.14em;color:var(--k-mut);text-transform:uppercase}
-#cmdTop .thr{display:flex;flex-direction:column;gap:4px;min-width:104px;padding:0 4px}
-#cmdTop .thr small{font:700 9px/1 var(--k-txt);letter-spacing:.14em;text-transform:uppercase;color:var(--k-mut);display:flex;justify-content:space-between;gap:8px}
-#cmdTop .thr small b{font-weight:800;color:var(--k-tx)}
-#cmdTop .thr .bar{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
-#cmdTop .thr .bar i{height:6px;border-radius:1px;background:rgba(255,255,255,.08);transition:background .3s,box-shadow .3s}
+#cmdTop .nm small{display:block;margin-top:4px;font:500 11px/1 var(--k-txt);color:var(--k-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+#cmdTop .ph{display:flex;align-items:center;gap:7px;height:24px;padding:0 11px 0 9px;border-radius:12px;font:600 11px/1 var(--k-txt);border:1px solid rgba(92,214,255,.32);color:var(--k-cy);background:rgba(92,214,255,.08);white-space:nowrap}
+#cmdTop .ph::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor;animation:kPulse 2s ease-in-out infinite}
+#cmdTop .ph.prep{color:var(--k-gold);border-color:rgba(242,181,60,.4);background:rgba(242,181,60,.09)}
+#cmdTop .ph.over{color:var(--k-mut);border-color:var(--k-ln2);background:none}#cmdTop .ph.over::before{animation:none}
+#cmdTop .tc{display:flex;align-items:center;gap:14px}
+#cmdTop .pp{width:34px;height:34px;border-radius:var(--k-r2);border:1px solid var(--k-ln2);background:rgba(255,255,255,.04);display:grid;place-items:center;transition:background var(--k-t1),border-color var(--k-t1),transform var(--k-t1) var(--k-e),color var(--k-t1)}
+#cmdTop .pp:hover{background:rgba(242,181,60,.12);border-color:rgba(242,181,60,.55);color:var(--k-gold2)}
+#cmdTop .pp:active{transform:scale(.92)}
+#cmdTop .pp[disabled]{opacity:.3;pointer-events:none}
+#cmdTop .pp.paused{background:rgba(242,181,60,.16);border-color:var(--k-gold);color:var(--k-gold2)}
+#cmdTop .clk{display:flex;flex-direction:column;align-items:center;min-width:88px;line-height:1}
+#cmdTop .clk .t{font:600 24px/1 var(--k-mono);letter-spacing:.01em;color:#fff;font-variant-numeric:tabular-nums}
+#cmdTop .clk .d{margin-top:5px;font:500 11px/1 var(--k-txt);color:var(--k-mut);white-space:nowrap}
+#cmdTop .prg{position:absolute;left:14px;right:14px;bottom:-1px;height:2px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden}
+#cmdTop .prg i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--k-ua),var(--k-gold) 55%,var(--k-ru));transition:width .6s linear}
+#cmdTop .sc{display:flex;align-items:center;gap:0;height:30px;border-radius:var(--k-r2);overflow:hidden;border:1px solid var(--k-ln2);background:rgba(0,0,0,.25);font:700 15px/1 var(--k-mono)}
+#cmdTop .sc span{min-width:38px;height:100%;display:grid;place-items:center;padding:0 8px;font-variant-numeric:tabular-nums}
+#cmdTop .sc .ua{color:var(--k-ua2);background:linear-gradient(180deg,rgba(77,163,255,.20),rgba(77,163,255,.08))}
+#cmdTop .sc .ru{color:var(--k-ru2);background:linear-gradient(180deg,rgba(255,91,77,.20),rgba(255,91,77,.08))}
+#cmdTop .sc em{width:1px;align-self:stretch;background:var(--k-ln2);font-size:0}
+#cmdTop .tr{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}
+#cmdTop .mny{display:flex;flex-direction:column;align-items:flex-end;line-height:1;padding:0 10px;border-left:1px solid var(--k-ln);border-right:1px solid var(--k-ln)}
+#cmdTop .mny b{font:600 13px/1 var(--k-mono);color:var(--k-gold2)}
+#cmdTop .mny small{margin-top:4px;font:500 10.5px/1 var(--k-txt);color:var(--k-mut)}
+#cmdTop .thr{display:flex;flex-direction:column;gap:5px;min-width:112px;padding:0 10px 0 4px}
+#cmdTop .thr small{font:500 11px/1 var(--k-txt);color:var(--k-mut);display:flex;justify-content:space-between;gap:10px}
+#cmdTop .thr small b{font:600 11px/1 var(--k-mono);color:var(--k-tx)}
+#cmdTop .thr .bar{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+#cmdTop .thr .bar i{height:5px;border-radius:2px;background:rgba(255,255,255,.08);transition:background var(--k-t3),box-shadow var(--k-t3)}
 #cmdTop .thr[data-l="1"] .bar i:nth-child(-n+1){background:var(--k-ok)}
 #cmdTop .thr[data-l="2"] .bar i:nth-child(-n+2){background:#b6e03a}
 #cmdTop .thr[data-l="3"] .bar i:nth-child(-n+3){background:var(--k-warn)}
 #cmdTop .thr[data-l="4"] .bar i:nth-child(-n+4){background:#ff7a2a}
-#cmdTop .thr[data-l="5"] .bar i:nth-child(-n+5){background:var(--k-bad);box-shadow:0 0 8px var(--k-bad)}
-#cmdTop .ib{width:32px;height:32px;border-radius:8px;border:1px solid var(--k-ln);background:rgba(255,255,255,.03);display:grid;place-items:center;position:relative;transition:background .15s,border-color .15s}
-#cmdTop .ib:hover{background:rgba(70,210,255,.12);border-color:var(--k-ln3)}
-#cmdTop .ib.on{background:rgba(255,200,61,.14);border-color:var(--k-gold);color:var(--k-gold)}
-#cmdTop .go{height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--k-gold);background:linear-gradient(180deg,rgba(255,200,61,.28),rgba(255,200,61,.1));color:var(--k-gold2);font:800 11px/1 var(--k-disp);letter-spacing:.1em;text-transform:uppercase;animation:kGlow 1.8s infinite}
-#cmdMenu{position:absolute;right:var(--k-sr);top:calc(var(--k-st) + var(--k-top) + 6px);min-width:230px;padding:6px;display:none;flex-direction:column;gap:2px;z-index:3}
-#cmdMenu.on{display:flex;animation:kIn .18s var(--k-e)}
-#cmdMenu button{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border:0;border-radius:7px;background:transparent;text-align:left;font:600 12px/1 var(--k-txt);color:var(--k-tx)}
-#cmdMenu button:hover{background:rgba(70,210,255,.12)}
-#cmdMenu button.warn{color:var(--k-ru2)}
-#cmdMenu hr{border:0;height:1px;background:var(--k-ln);margin:3px 4px}
+#cmdTop .thr[data-l="5"] .bar i:nth-child(-n+5){background:var(--k-bad);box-shadow:0 0 10px rgba(255,91,77,.7)}
+#cmdTop .ib{height:34px;min-width:34px;padding:0 9px;border-radius:var(--k-r2);border:1px solid var(--k-ln);background:rgba(255,255,255,.035);display:inline-flex;align-items:center;justify-content:center;gap:8px;position:relative;transition:background var(--k-t1),border-color var(--k-t1),color var(--k-t1)}
+#cmdTop .ib:hover{background:rgba(255,255,255,.08);border-color:var(--k-ln3)}
+#cmdTop .ib.on{background:rgba(242,181,60,.14);border-color:rgba(242,181,60,.6);color:var(--k-gold2)}
+#cmdTop .ib.sr{padding:0 6px 0 10px;color:var(--k-mut);font:500 12px/1 var(--k-txt)}
+#cmdTop .ib.sr:hover{color:var(--k-tx)}
+#cmdTop .go{height:34px;padding:0 16px;border-radius:var(--k-r2);border:1px solid var(--k-gold);background:linear-gradient(180deg,rgba(242,181,60,.34),rgba(242,181,60,.14));color:#fff0cf;font:700 12px/1 var(--k-disp);letter-spacing:.04em;animation:kGlow 2.2s ease-in-out infinite;transition:transform var(--k-t1) var(--k-e)}
+#cmdTop .go:active{transform:scale(.96)}
 
-/* ---------- ліва навігація ---------- */
-#cmdRail{position:absolute;left:var(--k-sl);top:calc(var(--k-st) + var(--k-top) + 8px);width:var(--k-rail);padding:6px;display:flex;flex-direction:column;gap:4px}
-#cmdRail .rb{position:relative;width:100%;height:46px;border-radius:8px;border:1px solid transparent;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--k-mut);transition:background .15s,color .15s,border-color .15s}
-#cmdRail .rb span{font:700 8px/1 var(--k-txt);letter-spacing:.08em;text-transform:uppercase}
-#cmdRail .rb:hover{background:rgba(70,210,255,.1);color:var(--k-tx)}
-#cmdRail .rb.on{background:rgba(255,200,61,.11);border-color:rgba(255,200,61,.55);color:var(--k-gold)}
-#cmdRail .rb.on::before{content:"";position:absolute;left:-7px;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--k-gold);box-shadow:0 0 10px var(--k-gold)}
-#cmdRail .rb .bg{position:absolute;top:3px;right:5px;min-width:16px;height:16px;border-radius:8px;padding:0 4px;background:var(--k-bad);color:#fff;font:800 9px/16px var(--k-mono);text-align:center;display:none}
-#cmdRail .rb .bg.on{display:block;animation:kIn .2s var(--k-e)}
+/* меню «більше» */
+#cmdMenu{position:absolute;right:var(--k-sr);top:calc(var(--k-st) + var(--k-top) + 8px);min-width:236px;padding:6px;display:none;flex-direction:column;gap:2px;z-index:3;transform-origin:top right}
+#cmdMenu.on{display:flex;animation:kPop var(--k-t2) var(--k-e)}
+#cmdMenu button{display:flex;align-items:center;gap:11px;height:36px;padding:0 11px;border:0;border-radius:var(--k-r1);background:transparent;text-align:left;font:500 13px/1 var(--k-txt);color:var(--k-tx);transition:background var(--k-t1)}
+#cmdMenu button .k-ico{color:var(--k-mut)}
+#cmdMenu button:hover{background:rgba(255,255,255,.07)}#cmdMenu button:hover .k-ico{color:var(--k-gold2)}
+#cmdMenu button.warn{color:var(--k-ru2)}#cmdMenu button.warn .k-ico{color:var(--k-ru2)}
+#cmdMenu hr{border:0;height:1px;background:var(--k-ln);margin:4px 6px}
+
+/* ========================================================== НАВІГАЦІЯ */
+#cmdRail{left:var(--k-sl);top:calc(var(--k-st) + var(--k-top) + var(--k-gap));width:var(--k-rail);padding:6px;display:flex;flex-direction:column;gap:3px;border-radius:var(--k-r3)}
+#cmdRail .rb{position:relative;width:100%;height:40px;border-radius:var(--k-r2);border:0;background:transparent;display:grid;place-items:center;color:var(--k-mut);transition:background var(--k-t1),color var(--k-t1),transform var(--k-t1) var(--k-e)}
+#cmdRail .rb .k-ico{width:20px;height:20px}
+#cmdRail .rb .tt{position:absolute;left:calc(100% + 14px);top:50%;transform:translate(-4px,-50%);display:flex;align-items:center;gap:10px;white-space:nowrap;pointer-events:none;z-index:30;padding:6px 7px 6px 11px;border-radius:var(--k-r1);background:var(--k-g3);border:1px solid var(--k-ln2);box-shadow:0 10px 26px rgba(0,0,0,.55);font:500 12.5px/1 var(--k-txt);color:var(--k-tx);opacity:0;transition:opacity var(--k-t1),transform var(--k-t2) var(--k-e)}
+#cmdRail .rb:hover .tt,#cmdRail .rb:focus-visible .tt{opacity:1;transform:translate(0,-50%);transition-delay:.3s}
+@media (hover:none){#cmdRail .rb .tt{display:none}}
+#cmdRail .rb:hover{background:rgba(255,255,255,.07);color:var(--k-tx)}
+#cmdRail .rb:active{transform:scale(.92)}
+#cmdRail .rb.on{background:rgba(242,181,60,.13);color:var(--k-gold2)}
+#cmdRail .rb::before{content:"";position:absolute;left:-7px;top:50%;width:3px;height:0;border-radius:0 3px 3px 0;background:var(--k-gold);box-shadow:0 0 12px rgba(242,181,60,.8);transform:translateY(-50%);transition:height var(--k-t2) var(--k-e)}
+#cmdRail .rb.on::before{height:20px}
+#cmdRail .rb .bg{position:absolute;top:1px;right:1px;min-width:16px;height:16px;border-radius:8px;padding:0 4px;background:var(--k-bad);color:#fff;font:700 9.5px/16px var(--k-mono);text-align:center;display:none;box-shadow:0 0 0 2px #0a0f17}
+#cmdRail .rb .bg.on{display:block;animation:kPop var(--k-t2) var(--k-e)}
 #cmdRail .rb .bg.cy{background:var(--k-cy);color:#02101a}
-#cmdRail hr{border:0;height:1px;background:var(--k-ln);margin:2px 6px}
+#cmdRail hr{border:0;height:1px;background:var(--k-ln);margin:4px 8px}
+/* підказки до кнопок: назва + гаряча клавіша */
+[data-tip]{position:relative}
+[data-tip]::after{content:attr(data-tip);position:absolute;left:calc(100% + 12px);top:50%;transform:translate(-4px,-50%);white-space:nowrap;pointer-events:none;z-index:30;
+  padding:7px 10px;border-radius:var(--k-r1);background:var(--k-g3);border:1px solid var(--k-ln2);box-shadow:0 10px 26px rgba(0,0,0,.55);
+  font:500 12px/1 var(--k-txt);color:var(--k-tx);opacity:0;transition:opacity var(--k-t1),transform var(--k-t2) var(--k-e);transition-delay:0s}
+[data-tip]:hover::after,[data-tip]:focus-visible::after{opacity:1;transform:translate(0,-50%);transition-delay:.35s}
+[data-tipl]::after{left:auto;right:calc(100% + 12px);transform:translate(4px,-50%)}
+[data-tipl]:hover::after{transform:translate(0,-50%)}
 
-/* ---------- висувна панель ---------- */
-#cmdDrawer{position:absolute;left:calc(var(--k-sl) + var(--k-rail) + 8px);top:calc(var(--k-st) + var(--k-top) + 8px);bottom:calc(var(--k-sb) + 40px);width:var(--k-drawer);display:flex;flex-direction:column;overflow:hidden;
-  transform:translateX(-14px);opacity:0;visibility:hidden;transition:transform .26s var(--k-e),opacity .2s,visibility 0s .26s}
-#cmdDrawer.on{transform:none;opacity:1;visibility:visible;transition:transform .26s var(--k-e),opacity .2s}
-#cmdDrawer .dh{display:flex;align-items:center;gap:8px;padding:12px 12px 8px}
-#cmdDrawer .dh h3{margin:0;font:italic 800 13px/1 var(--k-disp);letter-spacing:.1em;text-transform:uppercase;flex:1}
-#cmdDrawer .dh .x{width:26px;height:26px;border-radius:7px;border:1px solid var(--k-ln);background:transparent;display:grid;place-items:center;color:var(--k-mut)}
-#cmdDrawer .dh .x:hover{color:var(--k-tx);border-color:var(--k-ln3)}
-#cmdDrawer .db{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:0 10px 12px;scrollbar-width:thin;scrollbar-color:var(--k-ln2) transparent}
-.k-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:10px}
-.k-kpi{padding:9px 10px;border-radius:8px;background:rgba(255,255,255,.035);border:1px solid var(--k-ln);line-height:1}
-.k-kpi small{display:block;font:700 9px/1 var(--k-txt);letter-spacing:.12em;text-transform:uppercase;color:var(--k-mut)}
-.k-kpi b{display:block;margin-top:6px;font:700 20px/1 var(--k-mono);color:#fff}
+/* ========================================================== ВИСУВНА ПАНЕЛЬ */
+#cmdDrawer{left:calc(var(--k-sl) + var(--k-rail) + var(--k-gap));top:calc(var(--k-st) + var(--k-top) + var(--k-gap));bottom:calc(var(--k-sb) + 44px);width:var(--k-drawer);display:flex;flex-direction:column;overflow:hidden;
+  transform:translateX(-18px) scale(.985);transform-origin:left top;opacity:0;visibility:hidden;transition:transform var(--k-t3) var(--k-e),opacity var(--k-t2),visibility 0s var(--k-t3)}
+#cmdDrawer.on{transform:none;opacity:1;visibility:visible;transition:transform var(--k-t3) var(--k-e),opacity var(--k-t2)}
+#cmdDrawer .dh{display:flex;align-items:center;gap:10px;padding:14px 12px 10px 16px}
+#cmdDrawer .dh .tt{flex:1;min-width:0}
+#cmdDrawer .dh h3{margin:0;font:700 16px/1.1 var(--k-disp);letter-spacing:.01em;color:#fff}
+#cmdDrawer .dh .ds{display:block;margin-top:4px;font:500 11.5px/1 var(--k-txt);color:var(--k-mut)}
+#cmdDrawer .dh .x{width:30px;height:30px;border-radius:var(--k-r1);border:1px solid transparent;background:transparent;display:grid;place-items:center;color:var(--k-mut);transition:background var(--k-t1),color var(--k-t1)}
+#cmdDrawer .dh .x:hover{color:#fff;background:rgba(255,255,255,.08)}
+#cmdDrawer .db{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:2px 12px 14px;scrollbar-width:thin;scrollbar-color:var(--k-ln2) transparent}
+#cmdDrawer .db::-webkit-scrollbar{width:6px}#cmdDrawer .db::-webkit-scrollbar-thumb{background:var(--k-ln2);border-radius:3px}
+#cmdDrawer.on .db>*{animation:kRise var(--k-t3) var(--k-e) both}
+#cmdDrawer.on .db>*:nth-child(2){animation-delay:.03s}#cmdDrawer.on .db>*:nth-child(3){animation-delay:.06s}#cmdDrawer.on .db>*:nth-child(n+4){animation-delay:.09s}
+#cmdDrawer.still .db>*{animation:none!important}
+
+.k-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 0 12px}
+.k-kpis.q{grid-template-columns:repeat(4,1fr);gap:6px}
+.k-kpi{padding:10px 11px 11px;border-radius:var(--k-r2);background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02));border:1px solid var(--k-ln);line-height:1;min-width:0}
+.k-kpi small{display:block;font:500 11px/1.15 var(--k-txt);color:var(--k-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k-kpi b{display:block;margin-top:8px;font:600 22px/1 var(--k-disp);color:#fff;font-variant-numeric:tabular-nums}
+.k-kpis.q .k-kpi b{font-size:19px}
 .k-kpi b.w{color:var(--k-warn)}.k-kpi b.b{color:var(--k-bad)}.k-kpi b.g{color:var(--k-ok)}.k-kpi b.c{color:var(--k-cy)}
-.k-chips{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 10px}
-.k-chip{height:25px;padding:0 10px;border-radius:13px;border:1px solid var(--k-ln);background:rgba(255,255,255,.03);font:700 10px/1 var(--k-txt);letter-spacing:.06em;color:var(--k-mut);text-transform:uppercase;white-space:nowrap}
-.k-chip:hover{color:var(--k-tx);border-color:var(--k-ln2)}
-.k-chip.on{color:var(--k-gold);border-color:rgba(255,200,61,.6);background:rgba(255,200,61,.1)}
-.k-chip i{font-style:normal;font-family:var(--k-mono);opacity:.75;margin-left:5px}
-.k-search{width:100%;height:32px;border-radius:8px;border:1px solid var(--k-ln);background:rgba(0,0,0,.28);color:var(--k-tx);padding:0 10px;font:500 12px/1 var(--k-txt);margin-bottom:8px;outline:0}
-.k-search:focus{border-color:var(--k-gold)}
-.k-sec{margin:12px 2px 6px;font:800 9px/1 var(--k-txt);letter-spacing:.16em;text-transform:uppercase;color:var(--k-dim);display:flex;align-items:center;gap:8px}
+
+.k-chips{display:flex;gap:6px;margin:0 -12px 10px;padding:0 12px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 12px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 12px,#000 calc(100% - 22px),transparent)}
+.k-chips::-webkit-scrollbar{display:none}
+.k-chip{flex:0 0 auto;height:28px;padding:0 12px;border-radius:14px;border:1px solid var(--k-ln);background:rgba(255,255,255,.03);font:500 12px/1 var(--k-txt);color:var(--k-mut);white-space:nowrap;transition:background var(--k-t1),border-color var(--k-t1),color var(--k-t1)}
+.k-chip:hover{color:var(--k-tx);border-color:var(--k-ln3)}
+.k-chip.on{color:var(--k-gold2);border-color:rgba(242,181,60,.55);background:rgba(242,181,60,.12);font-weight:600}
+.k-chip i{font-style:normal;font-family:var(--k-mono);font-size:10.5px;opacity:.8;margin-left:6px}
+.k-sortl{margin:0 0 6px;font:500 11px/1 var(--k-txt);color:var(--k-dim)}
+.k-search{width:100%;height:36px;border-radius:var(--k-r2);border:1px solid var(--k-ln);background:rgba(0,0,0,.3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a5bd' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5.2-5.2'/%3E%3C/svg%3E") 11px 50%/16px no-repeat;
+  color:var(--k-tx);padding:0 12px 0 34px;font:500 13px/1 var(--k-txt);margin-bottom:10px;outline:0;transition:border-color var(--k-t1),box-shadow var(--k-t1)}
+.k-search::placeholder{color:var(--k-dim)}
+.k-search:focus{border-color:rgba(242,181,60,.6);box-shadow:0 0 0 3px rgba(242,181,60,.12)}
+.k-sec{margin:16px 2px 8px;font:600 12px/1 var(--k-txt);color:var(--k-mut);display:flex;align-items:center;gap:10px}
+.k-sec:first-child{margin-top:4px}
 .k-sec::after{content:"";flex:1;height:1px;background:var(--k-ln)}
-.k-empty{padding:26px 10px;text-align:center;color:var(--k-dim);font:500 12px/1.5 var(--k-txt)}
-.k-row{position:relative;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:9px;align-items:center;padding:8px 8px 8px 10px;margin-bottom:4px;border-radius:8px;border:1px solid var(--k-ln);background:rgba(255,255,255,.025);cursor:pointer;transition:background .12s,border-color .12s}
-.k-row:hover{background:rgba(70,210,255,.08);border-color:var(--k-ln2)}
-.k-row.sel{border-color:var(--k-gold);background:rgba(255,200,61,.08)}
-.k-row::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 2px 2px 0;background:var(--k-dim)}
+.k-empty{padding:34px 14px;text-align:center;color:var(--k-dim);font:500 13px/1.5 var(--k-txt)}
+.k-empty .k-ico{width:30px;height:30px;margin-bottom:8px;opacity:.55}
+.k-empty small{display:block;margin-top:6px;font-size:12px;color:var(--k-dim)}
+
+/* рядок списку */
+.k-row{position:relative;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:11px;align-items:center;padding:9px 10px 9px 13px;margin-bottom:5px;border-radius:var(--k-r2);border:1px solid var(--k-ln);background:rgba(255,255,255,.025);cursor:pointer;
+  transition:background var(--k-t1),border-color var(--k-t1),transform var(--k-t2) var(--k-e)}
+.k-row:hover{background:rgba(255,255,255,.06);border-color:var(--k-ln3)}
+.k-row:active{transform:scale(.992)}
+.k-row.sel{border-color:rgba(242,181,60,.7);background:linear-gradient(90deg,rgba(242,181,60,.13),rgba(242,181,60,.04))}
+.k-row::before{content:"";position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--k-dim)}
 .k-row.ua::before{background:var(--k-ua)}.k-row.ru::before{background:var(--k-ru)}.k-row.bad::before{background:var(--k-bad)}.k-row.warn::before{background:var(--k-warn)}
-.k-row .ic{width:34px;height:34px;border-radius:7px;background:rgba(0,0,0,.35);display:grid;place-items:center;overflow:hidden}
-.k-row .ic img{max-width:30px;max-height:30px;object-fit:contain;filter:drop-shadow(0 0 3px rgba(0,0,0,.6))}
-.k-row .ic svg{width:18px;height:18px;color:var(--k-mut)}
+.k-row .ic{width:38px;height:38px;border-radius:var(--k-r1);background:rgba(0,0,0,.34);border:1px solid var(--k-ln);display:grid;place-items:center;overflow:hidden}
+.k-row .ic img{max-width:32px;max-height:32px;object-fit:contain;filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))}
+.k-row .ic svg{width:19px;height:19px;color:var(--k-mut)}
 .k-row .tx{min-width:0;line-height:1.2}
-.k-row .tx b{display:block;font:700 12px/1.2 var(--k-txt);color:var(--k-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.k-row .tx small{display:block;margin-top:3px;font:500 10.5px/1.25 var(--k-txt);color:var(--k-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.k-row .rt{text-align:right;line-height:1.15}
-.k-row .rt b{display:block;font:700 13px/1 var(--k-mono);color:var(--k-tx)}
-.k-row .rt small{display:block;margin-top:3px;font:600 9px/1 var(--k-txt);letter-spacing:.1em;text-transform:uppercase;color:var(--k-mut)}
-.k-row .rt b.w{color:var(--k-warn)}.k-row .rt b.b{color:var(--k-bad);animation:kBlink 1s infinite}.k-row .rt b.g{color:var(--k-ok)}
-.k-bar{height:4px;border-radius:2px;background:rgba(255,255,255,.09);margin-top:5px;overflow:hidden}
-.k-bar i{display:block;height:100%;background:var(--k-ok);border-radius:2px;transition:width .3s}
+.k-row .tx b{display:block;font:600 13px/1.2 var(--k-txt);color:var(--k-tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k-row .tx small{display:block;margin-top:3px;font:500 11.5px/1.25 var(--k-txt);color:var(--k-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k-row .rt{text-align:right;line-height:1.1;min-width:42px}
+.k-row .rt b{display:block;font:600 14px/1 var(--k-mono);color:var(--k-tx);font-variant-numeric:tabular-nums}
+.k-row .rt small{display:block;margin-top:4px;font:500 10.5px/1 var(--k-txt);color:var(--k-mut)}
+.k-row .rt b.w{color:var(--k-warn)}.k-row .rt b.b{color:var(--k-bad);animation:kBlink 1.1s ease-in-out infinite}.k-row .rt b.g{color:var(--k-ok)}
+/* шкала з поділками */
+.k-bar{height:4px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:6px;overflow:hidden;position:relative}
+.k-bar i{display:block;height:100%;background:var(--k-ok);border-radius:2px;transition:width var(--k-t3) var(--k-e),background var(--k-t2)}
+.k-bar::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),rgba(7,11,17,.85) calc(10% - 1px) 10%);pointer-events:none}
 .k-bar i.w{background:var(--k-warn)}.k-bar i.b{background:var(--k-bad)}.k-bar i.c{background:var(--k-cy)}
-.k-tg{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--k-ln);cursor:pointer;font:600 12px/1.2 var(--k-txt)}
+
+/* перемикачі шарів */
+.k-card{border:1px solid var(--k-ln);border-radius:var(--k-r2);background:rgba(255,255,255,.022);overflow:hidden;margin-bottom:10px}
+.k-tg{display:flex;align-items:center;gap:12px;padding:11px 12px;border-bottom:1px solid var(--k-ln);cursor:pointer;font:500 13px/1.25 var(--k-txt);position:relative;transition:background var(--k-t1)}
 .k-tg:last-child{border-bottom:0}
+.k-tg:hover{background:rgba(255,255,255,.04)}
 .k-tg input{position:absolute;opacity:0;pointer-events:none}
-.k-tg .sw{width:30px;height:17px;border-radius:9px;background:rgba(255,255,255,.1);position:relative;flex:0 0 auto;transition:background .18s}
-.k-tg .sw::after{content:"";position:absolute;left:2px;top:2px;width:13px;height:13px;border-radius:50%;background:#9fb1cf;transition:transform .18s var(--k-e),background .18s}
-.k-tg input:checked+.sw{background:rgba(255,200,61,.35)}
-.k-tg input:checked+.sw::after{transform:translateX(13px);background:var(--k-gold)}
-.k-tg .l{flex:1;min-width:0}.k-tg .l small{display:block;margin-top:3px;color:var(--k-dim);font:500 10px/1.25 var(--k-txt)}
-.k-act{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-.k-btn{height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--k-ln2);background:rgba(255,255,255,.05);font:700 10.5px/1 var(--k-txt);letter-spacing:.05em;text-transform:uppercase;color:var(--k-tx);white-space:nowrap}
-.k-btn:hover{background:rgba(70,210,255,.14);border-color:var(--k-ln3)}
-.k-btn.pri{border-color:var(--k-gold);color:var(--k-gold2);background:rgba(255,200,61,.12)}
-.k-btn.dng{border-color:rgba(255,77,63,.6);color:var(--k-ru2)}
+.k-tg .sw{width:34px;height:20px;border-radius:10px;background:rgba(255,255,255,.1);position:relative;flex:0 0 auto;transition:background var(--k-t2);box-shadow:inset 0 0 0 1px var(--k-ln)}
+.k-tg .sw::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#9fb0c8;transition:transform var(--k-t2) var(--k-e),background var(--k-t2)}
+.k-tg input:checked+.sw{background:rgba(242,181,60,.38);box-shadow:inset 0 0 0 1px rgba(242,181,60,.5)}
+.k-tg input:checked+.sw::after{transform:translateX(14px);background:var(--k-gold2)}
+.k-tg input:focus-visible+.sw{outline:2px solid var(--k-gold);outline-offset:2px}
+.k-tg .l{flex:1;min-width:0}.k-tg .l small{display:block;margin-top:3px;color:var(--k-dim);font:500 11.5px/1.3 var(--k-txt)}
+.k-tg .kk{flex:0 0 auto}
+.k-pre{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:0 0 12px}
+.k-pre button{height:34px;border-radius:var(--k-r2);border:1px solid var(--k-ln);background:rgba(255,255,255,.03);font:500 12px/1 var(--k-txt);color:var(--k-mut);transition:background var(--k-t1),border-color var(--k-t1),color var(--k-t1)}
+.k-pre button:hover{color:var(--k-tx);border-color:var(--k-ln3)}
+.k-pre button.on{color:var(--k-gold2);border-color:rgba(242,181,60,.55);background:rgba(242,181,60,.12);font-weight:600}
+
+.k-act{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.k-btn{height:32px;padding:0 13px;border-radius:var(--k-r1);border:1px solid var(--k-ln2);background:rgba(255,255,255,.05);font:600 12px/1 var(--k-txt);color:var(--k-tx);white-space:nowrap;display:inline-flex;align-items:center;gap:7px;transition:background var(--k-t1),border-color var(--k-t1),transform var(--k-t1) var(--k-e)}
+.k-btn:hover{background:rgba(255,255,255,.1);border-color:var(--k-ln3)}
+.k-btn:active{transform:scale(.96)}
+.k-btn.pri{border-color:rgba(242,181,60,.7);color:#fff0cf;background:linear-gradient(180deg,rgba(242,181,60,.30),rgba(242,181,60,.12))}
+.k-btn.pri:hover{background:linear-gradient(180deg,rgba(242,181,60,.42),rgba(242,181,60,.18))}
+.k-btn.dng{border-color:rgba(255,91,77,.5);color:var(--k-ru2)}
+.k-btn.dng:hover{background:rgba(255,91,77,.14)}
 .k-btn[disabled]{opacity:.35;pointer-events:none}
-.k-log{display:grid;grid-template-columns:42px 8px minmax(0,1fr);gap:8px;align-items:start;padding:7px 4px;border-bottom:1px solid rgba(140,180,255,.07);cursor:default;font:500 12px/1.35 var(--k-txt)}
-.k-log.loc{cursor:pointer}.k-log.loc:hover{background:rgba(70,210,255,.06)}
-.k-log time{font:600 10.5px/1.5 var(--k-mono);color:var(--k-mut)}
-.k-log i{width:7px;height:7px;border-radius:50%;margin-top:5px;background:var(--k-cy)}
-.k-log.alert i{background:var(--k-bad);box-shadow:0 0 6px var(--k-bad)}.k-log.warn i{background:var(--k-warn)}.k-log.ok i{background:var(--k-ok)}
-.k-log.kill i{background:var(--k-ok)}.k-log.hit i{background:var(--k-bad)}.k-log.launch i{background:var(--k-gold)}.k-log.obj i{background:#d977ff}
-.k-log em{font-style:normal;font-family:var(--k-mono);color:var(--k-mut);margin-left:6px;font-size:10px}
+.k-btn .k-ico{width:15px;height:15px}
 
-/* ---------- мінікарта ---------- */
-#cmdMini{position:absolute;right:var(--k-sr);bottom:calc(var(--k-sb) + 92px);width:236px;height:164px;overflow:hidden;transition:opacity .2s,transform .26s var(--k-e)}
+/* журнал */
+.k-log{display:grid;grid-template-columns:44px 8px minmax(0,1fr);gap:9px;align-items:start;padding:8px 6px;border-bottom:1px solid rgba(160,186,224,.07);cursor:default;font:500 12.5px/1.4 var(--k-txt);border-radius:var(--k-r1)}
+.k-log.loc{cursor:pointer}.k-log.loc:hover{background:rgba(255,255,255,.05)}
+.k-log time{font:500 11px/1.6 var(--k-mono);color:var(--k-dim)}
+.k-log i{width:7px;height:7px;border-radius:50%;margin-top:6px;background:var(--k-cy)}
+.k-log.alert i{background:var(--k-bad);box-shadow:0 0 7px var(--k-bad)}.k-log.warn i{background:var(--k-warn)}.k-log.ok i{background:var(--k-ok)}
+.k-log.kill i{background:var(--k-ok)}.k-log.hit i{background:var(--k-bad)}.k-log.launch i{background:var(--k-gold)}.k-log.obj i{background:#c98bff}
+.k-log em{font-style:normal;font-family:var(--k-mono);color:var(--k-mut);margin-left:6px;font-size:11px}
+
+/* ========================================================== ПРАВА ПАНЕЛЬ КЕРУВАННЯ КАРТОЮ (стара розмітка, нова мова) */
+html body.s7-game #controls{z-index:13!important;top:calc(var(--k-st) + var(--k-top) + var(--k-gap))!important;bottom:auto!important;right:var(--k-sr)!important;left:auto!important;transform:none!important;
+  display:flex!important;flex-direction:column!important;gap:0!important;padding:5px!important;border-radius:var(--k-r3)!important;
+  background:linear-gradient(180deg,rgba(17,25,38,.80),rgba(9,14,22,.88))!important;border:1px solid var(--k-ln)!important;
+  backdrop-filter:blur(18px) saturate(1.35)!important;-webkit-backdrop-filter:blur(18px) saturate(1.35)!important;box-shadow:inset 0 1px 0 var(--k-hi),0 18px 44px -14px rgba(0,0,0,.7)!important}
+html body.s7-game #controls .btn{position:relative;width:40px!important;height:38px!important;margin:0!important;border-radius:var(--k-r2)!important;border:0!important;background:transparent!important;color:var(--k-mut)!important;
+  clip-path:none!important;box-shadow:none!important;backdrop-filter:none!important;transform:none!important;display:grid!important;place-items:center;transition:background var(--k-t1),color var(--k-t1)!important}
+html body.s7-game #controls .btn svg{width:19px;height:19px}
+html body.s7-game #controls .btn:hover:not(:disabled){background:rgba(255,255,255,.08)!important;color:var(--k-tx)!important;transform:none!important}
+html body.s7-game #controls .btn:active{transform:scale(.92)!important}
+html body.s7-game #controls .btn.on,html body.s7-game #controls .btn.active{background:rgba(242,181,60,.14)!important;color:var(--k-gold2)!important}
+html body.s7-game #controls .btn+.btn{margin-top:2px!important}
+html body.s7-game #controls .btn::after{left:auto;right:calc(100% + 14px);transform:translate(4px,-50%)}
+html body.s7-game #controls .btn:hover::after{transform:translate(0,-50%)}
+/* легенда карти / старі шари приховано в бою: усе в панелі «Шари» */
+html body.s7-game #layers{display:none!important}
+
+/* ========================================================== МІНІКАРТА */
+#cmdMini{right:var(--k-sr);bottom:calc(var(--k-sb) + 4px);width:244px;height:170px;overflow:hidden;border-radius:var(--k-r3);transition:opacity var(--k-t2),transform var(--k-t3) var(--k-e)}
 #cmdMini canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
-#cmdMini .mh{position:absolute;left:8px;top:6px;font:800 8.5px/1 var(--k-txt);letter-spacing:.16em;text-transform:uppercase;color:var(--k-mut);pointer-events:none}
-#cmdMini .mx{position:absolute;right:4px;top:4px;width:20px;height:20px;border-radius:5px;border:0;background:rgba(0,0,0,.4);color:var(--k-mut);display:grid;place-items:center;pointer-events:auto}
-#cmdMini .mx:hover{color:#fff}
-body.k-nomini #cmdMini{opacity:0;pointer-events:none;transform:translateY(8px)}
-/* права колонка керування мапою — вище мінікарти */
-html body.s7-game #controls{z-index:13!important}
+#cmdMini .mh{position:absolute;left:11px;top:9px;font:600 11px/1 var(--k-txt);color:var(--k-mut);pointer-events:none;text-shadow:0 1px 3px #000}
+#cmdMini .mx{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:var(--k-r1);border:0;background:rgba(0,0,0,.4);color:var(--k-mut);display:grid;place-items:center;pointer-events:auto;transition:color var(--k-t1),background var(--k-t1)}
+#cmdMini .mx:hover{color:#fff;background:rgba(0,0,0,.65)}
+body.k-nomini #cmdMini{opacity:0;pointer-events:none;transform:translateY(10px) scale(.98)}
+#cmdMiniOpen{right:var(--k-sr);bottom:calc(var(--k-sb) + 4px);width:38px;height:38px;border-radius:var(--k-r2);display:grid;place-items:center;color:var(--k-mut);transition:color var(--k-t1)}
+#cmdMiniOpen:hover{color:var(--k-gold2)}
 
-/* ---------- інспектор ---------- */
-#cmdInsp{position:absolute;left:calc(var(--k-sl) + var(--k-rail) + 8px);bottom:calc(var(--k-sb) + 40px);width:330px;padding:12px;display:none;flex-direction:column;gap:10px;z-index:2}
-body.k-dr #cmdInsp{left:calc(var(--k-sl) + var(--k-rail) + var(--k-drawer) + 16px)}
-#cmdInsp.on{display:flex;animation:kIn .2s var(--k-e)}
-#cmdInsp .ih{display:grid;grid-template-columns:46px minmax(0,1fr) 24px;gap:10px;align-items:center}
-#cmdInsp .ih .ic{width:46px;height:46px;border-radius:9px;background:rgba(0,0,0,.4);display:grid;place-items:center;border:1px solid var(--k-ln)}
-#cmdInsp .ih .ic img{max-width:40px;max-height:40px;object-fit:contain}
-#cmdInsp .ih b{display:block;font:800 14px/1.15 var(--k-disp);letter-spacing:.02em}
-#cmdInsp .ih small{display:block;margin-top:4px;font:600 10px/1.2 var(--k-txt);letter-spacing:.1em;text-transform:uppercase}
-#cmdInsp .ih small.ua{color:var(--k-ua2)}#cmdInsp .ih small.ru{color:var(--k-ru2)}
-#cmdInsp .ih .x{width:24px;height:24px;border:1px solid var(--k-ln);border-radius:6px;background:transparent;color:var(--k-mut)}
+/* ========================================================== КАРТКА ОБ'ЄКТА (інспектор) */
+#cmdInsp{left:calc(var(--k-sl) + var(--k-rail) + var(--k-gap));bottom:calc(var(--k-sb) + 44px);width:348px;padding:0;display:none;flex-direction:column;z-index:2;overflow:visible;--sc:var(--k-gold)}
+body.k-dr #cmdInsp{left:calc(var(--k-sl) + var(--k-rail) + var(--k-drawer) + var(--k-gap)*2)}
+#cmdInsp[data-side="ua"]{--sc:var(--k-ua)}#cmdInsp[data-side="ru"]{--sc:var(--k-ru)}
+#cmdInsp.on{display:flex;animation:kCard var(--k-t3) var(--k-e)}
+/* кутові мітки прицілу: «малюються» при виборі */
+#cmdInsp::before{content:"";position:absolute;inset:-5px;pointer-events:none;z-index:1;opacity:.95;
+  background:
+   linear-gradient(var(--sc),var(--sc)) 0 0/14px 2px no-repeat,linear-gradient(var(--sc),var(--sc)) 0 0/2px 14px no-repeat,
+   linear-gradient(var(--sc),var(--sc)) 100% 0/14px 2px no-repeat,linear-gradient(var(--sc),var(--sc)) 100% 0/2px 14px no-repeat,
+   linear-gradient(var(--sc),var(--sc)) 0 100%/14px 2px no-repeat,linear-gradient(var(--sc),var(--sc)) 0 100%/2px 14px no-repeat,
+   linear-gradient(var(--sc),var(--sc)) 100% 100%/14px 2px no-repeat,linear-gradient(var(--sc),var(--sc)) 100% 100%/2px 14px no-repeat;
+  animation:kReticle .5s var(--k-e) both}
+#cmdInsp .ih{display:grid;grid-template-columns:52px minmax(0,1fr) 28px;gap:12px;align-items:center;padding:14px 12px 12px 14px;border-bottom:1px solid var(--k-ln);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--sc) 16%,transparent),transparent 70%)}
+#cmdInsp .ih .ic{width:52px;height:52px;border-radius:var(--k-r2);background:rgba(0,0,0,.42);display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--sc) 45%,transparent)}
+#cmdInsp .ih .ic img{max-width:44px;max-height:44px;object-fit:contain;filter:drop-shadow(0 2px 4px rgba(0,0,0,.7))}
+#cmdInsp .ih .ic svg{width:24px;height:24px;color:var(--k-tx)}
+#cmdInsp .ih b{display:block;font:700 15px/1.18 var(--k-disp);letter-spacing:.005em;color:#fff}
+#cmdInsp .ih small{display:flex;align-items:center;gap:7px;margin-top:5px;font:500 12px/1.2 var(--k-txt);color:var(--k-mut)}
+#cmdInsp .ih small::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--sc);flex:0 0 auto;box-shadow:0 0 8px var(--sc)}
+#cmdInsp .ih .x{width:28px;height:28px;border:0;border-radius:var(--k-r1);background:transparent;color:var(--k-mut);display:grid;place-items:center;align-self:start;transition:background var(--k-t1),color var(--k-t1)}
+#cmdInsp .ih .x:hover{background:rgba(255,255,255,.09);color:#fff}
+#cmdInsp .ib2{padding:12px 14px 14px;display:flex;flex-direction:column;gap:12px}
+#cmdInsp .pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border-radius:11px;font:600 11.5px/1 var(--k-txt);background:rgba(255,255,255,.06);color:var(--k-tx);border:1px solid var(--k-ln2);align-self:flex-start}
+#cmdInsp .pill.ok{color:var(--k-ok);border-color:rgba(61,220,151,.4);background:rgba(61,220,151,.09)}
+#cmdInsp .pill.warn{color:var(--k-warn);border-color:rgba(255,176,32,.45);background:rgba(255,176,32,.09)}
+#cmdInsp .pill.bad{color:var(--k-bad);border-color:rgba(255,91,77,.5);background:rgba(255,91,77,.1)}
+#cmdInsp .kg{display:flex;flex-direction:column;gap:6px}
+#cmdInsp .kg .t{display:flex;justify-content:space-between;align-items:baseline;font:500 12px/1 var(--k-txt);color:var(--k-mut)}
+#cmdInsp .kg .t b{font:600 14px/1 var(--k-mono);color:#fff;font-variant-numeric:tabular-nums}
+#cmdInsp .kg .k-bar{height:6px;margin-top:0;border-radius:3px}
 #cmdInsp .ig{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-#cmdInsp .is{padding:7px 9px;border-radius:7px;background:rgba(255,255,255,.04);border:1px solid var(--k-ln);line-height:1}
-#cmdInsp .is small{display:block;font:700 8.5px/1 var(--k-txt);letter-spacing:.13em;text-transform:uppercase;color:var(--k-mut)}
-#cmdInsp .is b{display:block;margin-top:5px;font:700 13px/1.15 var(--k-mono);color:#fff;overflow-wrap:anywhere}
+#cmdInsp .is{padding:9px 11px;border-radius:var(--k-r1);background:rgba(255,255,255,.04);border:1px solid var(--k-ln);line-height:1;min-width:0}
+#cmdInsp .is small{display:block;font:500 11px/1 var(--k-txt);color:var(--k-mut)}
+#cmdInsp .is b{display:block;margin-top:6px;font:600 14px/1.15 var(--k-disp);color:#fff;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 #cmdInsp .is.span{grid-column:1/-1}
+#cmdInsp .is b.w{color:var(--k-warn)}#cmdInsp .is b.b{color:var(--k-bad)}#cmdInsp .is b.g{color:var(--k-ok)}
+#cmdInsp .k-act{margin:0}
 
-/* ---------- смуга тривоги ---------- */
-#cmdAlert{position:absolute;left:50%;top:calc(var(--k-st) + var(--k-top) + 10px);transform:translate(-50%,-8px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:12px;padding:8px 16px 8px 12px;border-radius:24px;border-color:rgba(255,77,63,.6);background:linear-gradient(90deg,rgba(80,10,10,.9),rgba(30,8,12,.92));transition:opacity .25s,transform .3s var(--k-e);white-space:nowrap;z-index:2}
+/* ========================================================== ТРИВОГА, СПОВІЩЕННЯ, ЖУРНАЛ-СТРІЧКА */
+#cmdAlert{left:50%;top:calc(var(--k-st) + var(--k-top) + 10px);transform:translate(-50%,-10px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:12px;padding:0 18px 0 12px;height:38px;border-radius:19px;
+  border-color:rgba(255,91,77,.55);background:linear-gradient(90deg,rgba(84,14,14,.92),rgba(30,9,13,.94));transition:opacity var(--k-t2),transform var(--k-t3) var(--k-e);white-space:nowrap;z-index:2;box-shadow:0 12px 34px -8px rgba(255,91,77,.35),inset 0 1px 0 rgba(255,255,255,.06)}
 #cmdAlert.on{opacity:1;transform:translate(-50%,0);pointer-events:auto;cursor:pointer}
-#cmdAlert .sg{width:22px;height:22px;color:var(--k-ru2);animation:kBlink 1s infinite}
-#cmdAlert b{font:800 12px/1 var(--k-disp);letter-spacing:.14em;text-transform:uppercase;color:#fff}
-#cmdAlert span{font:600 12px/1 var(--k-txt);color:var(--k-ru2)}
-#cmdAlert .k-num{color:#fff}
-#cmdAlert.ok{border-color:rgba(53,220,150,.6);background:linear-gradient(90deg,rgba(8,50,32,.9),rgba(6,24,20,.92))}
+#cmdAlert .sg{width:20px;height:20px;color:var(--k-ru2);animation:kBlink 1.1s ease-in-out infinite}
+#cmdAlert b{font:700 13px/1 var(--k-disp);letter-spacing:.03em;color:#fff}
+#cmdAlert span{font:500 13px/1 var(--k-txt);color:var(--k-ru2)}
+#cmdAlert .k-num{color:#fff;font-weight:600}
+#cmdAlert.ok{border-color:rgba(61,220,151,.5);background:linear-gradient(90deg,rgba(8,52,34,.92),rgba(6,26,21,.94));box-shadow:0 12px 34px -8px rgba(61,220,151,.28)}
 #cmdAlert.ok .sg,#cmdAlert.ok span{color:var(--k-ok);animation:none}
 
-/* ---------- нижній тикер журналу ---------- */
-#cmdLog{position:absolute;left:50%;bottom:var(--k-sb);transform:translateX(-50%);width:min(720px,calc(100vw - 2*var(--k-rail) - 2*var(--k-sl) - 260px));min-width:320px;overflow:hidden;transition:width .2s}
-#cmdLog .lh{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;width:100%;border:0;background:transparent;text-align:left}
-#cmdLog .lh b{flex:0 0 auto;font:800 9px/1 var(--k-txt);letter-spacing:.16em;text-transform:uppercase;color:var(--k-mut)}
-#cmdLog .lh span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:500 12px/1 var(--k-txt)}
-#cmdLog .lh span i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;background:var(--k-cy)}
-#cmdLog .lh span.alert i{background:var(--k-bad)}#cmdLog .lh span.ok i,#cmdLog .lh span.kill i{background:var(--k-ok)}#cmdLog .lh span.warn i{background:var(--k-warn)}#cmdLog .lh span.hit i{background:var(--k-bad)}
-#cmdLog .lh em{flex:0 0 auto;font:600 10.5px/1 var(--k-mono);font-style:normal;color:var(--k-dim)}
-#cmdLog .cnt{flex:0 0 auto;min-width:18px;height:17px;border-radius:9px;padding:0 5px;background:var(--k-cy);color:#02101a;font:800 10px/17px var(--k-mono);text-align:center;display:none}
+#cmdToasts{position:absolute;left:50%;top:calc(var(--k-st) + var(--k-top) + 58px);transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:2;width:min(520px,92vw)}
+.kt{display:flex;align-items:center;gap:10px;max-width:100%;padding:9px 14px 9px 12px;border-radius:var(--k-r2);background:var(--k-g3);border:1px solid var(--k-ln2);box-shadow:0 14px 34px -10px rgba(0,0,0,.7);font:500 13px/1.3 var(--k-txt);color:var(--k-tx);animation:kToast var(--k-t3) var(--k-e) both}
+.kt::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--k-cy);flex:0 0 auto;box-shadow:0 0 8px currentColor;color:var(--k-cy)}
+.kt.ok::before{background:var(--k-ok);color:var(--k-ok)}.kt.warn::before{background:var(--k-warn);color:var(--k-warn)}.kt.alert::before{background:var(--k-bad);color:var(--k-bad)}
+.kt.out{animation:kToastOut var(--k-t2) var(--k-eio) both}
+
+#cmdLog{left:50%;bottom:var(--k-sb);transform:translateX(-50%);width:min(680px,calc(100vw - 2*var(--k-rail) - 2*var(--k-sl) - 300px));min-width:300px;overflow:hidden;border-radius:var(--k-r2);transition:border-color var(--k-t1)}
+#cmdLog:hover{border-color:var(--k-ln3)}
+#cmdLog .lh{display:flex;align-items:center;gap:11px;height:34px;padding:0 12px;width:100%;border:0;background:transparent;text-align:left}
+#cmdLog .lh b{flex:0 0 auto;font:600 12px/1 var(--k-txt);color:var(--k-mut)}
+#cmdLog .lh span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:500 12.5px/1 var(--k-txt)}
+#cmdLog .lh span i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:9px;background:var(--k-cy);vertical-align:1px}
+#cmdLog .lh span.alert i{background:var(--k-bad)}#cmdLog .lh span.ok i,#cmdLog .lh span.kill i{background:var(--k-ok)}#cmdLog .lh span.warn i{background:var(--k-warn)}#cmdLog .lh span.hit i{background:var(--k-bad)}#cmdLog .lh span.launch i{background:var(--k-gold)}
+#cmdLog .lh em{flex:0 0 auto;font:500 11px/1 var(--k-mono);font-style:normal;color:var(--k-dim)}
+#cmdLog .cnt{flex:0 0 auto;min-width:18px;height:18px;border-radius:9px;padding:0 5px;background:var(--k-cy);color:#02101a;font:700 10.5px/18px var(--k-mono);text-align:center;display:none}
 #cmdLog.nw .cnt{display:block}
 
-/* ---------- підказка, палітра, довідка ---------- */
-#cmdTip{position:absolute;pointer-events:none;padding:7px 10px;border-radius:7px;background:var(--k-g3);border:1px solid var(--k-ln3);font:600 11px/1.35 var(--k-txt);white-space:nowrap;opacity:0;transform:translate(14px,14px);transition:opacity .1s;z-index:5;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-#cmdTip.on{opacity:1}#cmdTip b{display:block;font:800 12px/1.2 var(--k-disp);margin-bottom:2px}#cmdTip small{color:var(--k-mut);font-size:10.5px}
-#cmdPal,#cmdKeys{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding-top:14vh;background:rgba(2,5,10,.55);backdrop-filter:blur(3px);pointer-events:auto;z-index:20}
-#cmdPal.on,#cmdKeys.on{display:flex;animation:kFade .15s}
-#cmdPal .box,#cmdKeys .box{width:min(560px,92vw);max-height:68vh;display:flex;flex-direction:column;overflow:hidden;padding:0}
-#cmdPal input{height:50px;border:0;border-bottom:1px solid var(--k-ln);background:transparent;color:#fff;padding:0 16px;font:500 15px/1 var(--k-txt);outline:0}
-#cmdPal .res{overflow-y:auto;padding:6px}
-#cmdPal .it{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;font:600 13px/1.2 var(--k-txt);cursor:pointer}
-#cmdPal .it small{margin-left:auto;color:var(--k-mut);font:500 11px/1 var(--k-txt)}
-#cmdPal .it.sel,#cmdPal .it:hover{background:rgba(255,200,61,.12)}
-#cmdPal .it kbd{font:600 10px/1 var(--k-mono);padding:3px 6px;border-radius:4px;border:1px solid var(--k-ln2);color:var(--k-mut)}
-#cmdKeys .box{padding:18px 20px}
-#cmdKeys h3{margin:0 0 12px;font:italic 800 14px/1 var(--k-disp);letter-spacing:.12em;text-transform:uppercase}
-#cmdKeys .g{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px}
-#cmdKeys .g div{display:flex;justify-content:space-between;gap:10px;font:500 12px/1.3 var(--k-txt);color:var(--k-mut);padding:3px 0;border-bottom:1px solid rgba(140,180,255,.07)}
-#cmdKeys kbd{font:700 11px/1 var(--k-mono);color:var(--k-gold2);padding:3px 7px;border-radius:5px;border:1px solid rgba(255,200,61,.4);background:rgba(255,200,61,.06);white-space:nowrap}
+#cmdTip{position:absolute;pointer-events:none;padding:8px 11px;border-radius:var(--k-r2);background:var(--k-g3);border:1px solid var(--k-ln3);font:500 12px/1.35 var(--k-txt);white-space:nowrap;opacity:0;transform:translate(14px,14px);transition:opacity var(--k-t1);z-index:5;box-shadow:0 12px 28px rgba(0,0,0,.55)}
+#cmdTip.on{opacity:1}#cmdTip b{display:block;font:700 13px/1.2 var(--k-disp);margin-bottom:3px}#cmdTip small{color:var(--k-mut);font-size:11.5px}
 
-/* ---------- оверлей карти ---------- */
+/* ========================================================== ПАЛІТРА КОМАНД І ДОВІДКА */
+#cmdPal,#cmdKeys{position:absolute;inset:0;display:none;align-items:flex-start;justify-content:center;padding-top:7vh;background:radial-gradient(ellipse at 50% 30%,rgba(5,9,15,.5),rgba(2,4,8,.72));backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);pointer-events:auto;z-index:20}
+#cmdPal.on,#cmdKeys.on{display:flex;animation:kFade var(--k-t2)}
+#cmdPal.on .box,#cmdKeys.on .box{animation:kModal var(--k-t3) var(--k-e)}
+#cmdPal .box,#cmdKeys .box{width:min(600px,92vw);max-height:86vh;display:flex;flex-direction:column;overflow:hidden;padding:0;background:linear-gradient(180deg,rgba(19,28,42,.97),rgba(10,15,24,.98))}
+#cmdPal .pin{display:flex;align-items:center;gap:12px;padding:0 14px 0 16px;border-bottom:1px solid var(--k-ln)}
+#cmdPal .pin .k-ico{color:var(--k-mut);width:19px;height:19px}
+#cmdPal input{flex:1;height:54px;border:0;background:transparent;color:#fff;padding:0;font:500 16px/1 var(--k-txt);outline:0!important}
+#cmdPal input::placeholder{color:var(--k-dim)}
+#cmdPal .res{overflow-y:auto;padding:6px 8px 8px;scrollbar-width:thin}
+#cmdPal .gh{padding:12px 10px 6px;font:600 11.5px/1 var(--k-txt);color:var(--k-dim)}
+#cmdPal .it{display:flex;align-items:center;gap:12px;padding:0 10px;height:42px;border-radius:var(--k-r2);font:500 13.5px/1.2 var(--k-txt);cursor:pointer;position:relative}
+#cmdPal .it .k-ico{color:var(--k-mut);width:17px;height:17px}
+#cmdPal .it .nn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#cmdPal .it small{margin-left:auto;color:var(--k-dim);font:500 12px/1 var(--k-txt);white-space:nowrap}
+#cmdPal .it.sel,#cmdPal .it:hover{background:rgba(242,181,60,.12)}
+#cmdPal .it.sel::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--k-gold)}
+#cmdPal .it.sel .k-ico{color:var(--k-gold2)}
+#cmdPal .pf{display:flex;gap:16px;align-items:center;padding:0 16px;height:38px;border-top:1px solid var(--k-ln);font:500 11.5px/1 var(--k-txt);color:var(--k-dim)}
+#cmdPal .pf span{display:inline-flex;align-items:center;gap:6px}
+#cmdKeys .box{padding:0}
+#cmdKeys .kh{display:flex;align-items:center;gap:12px;padding:16px 16px 14px 20px;border-bottom:1px solid var(--k-ln)}
+#cmdKeys h3{margin:0;font:700 17px/1 var(--k-disp);flex:1}
+#cmdKeys .kx{width:30px;height:30px;border-radius:var(--k-r1);border:0;background:transparent;color:var(--k-mut);display:grid;place-items:center}
+#cmdKeys .kx:hover{background:rgba(255,255,255,.08);color:#fff}
+#cmdKeys .kb{overflow-y:auto;padding:6px 20px 18px;display:grid;grid-template-columns:1fr 1fr;gap:0 34px;scrollbar-width:thin}
+#cmdKeys .kb h4{grid-column:auto;margin:16px 0 4px;font:600 12.5px/1 var(--k-txt);color:var(--k-gold2)}
+#cmdKeys .kb .grp{min-width:0}
+#cmdKeys .kb .r{display:flex;justify-content:space-between;align-items:center;gap:12px;font:500 13px/1.3 var(--k-txt);color:var(--k-tx);padding:7px 0;border-bottom:1px solid rgba(160,186,224,.07)}
+#cmdKeys .kb .r:last-child{border-bottom:0}
+#cmdKeys .kb .r .ks{display:flex;gap:4px;align-items:center;flex:0 0 auto}
+#cmdKeys .kb .r .ks i{font-style:normal;color:var(--k-dim);font-size:11px}
+
+/* ========================================================== ОВЕРЛЕЙ МАПИ */
 #cmdOv{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2}
 body.s7-menu #cmdOv{display:none}
 
-@keyframes kIn{from{opacity:0;transform:translateY(6px)}}
-@keyframes kFade{from{opacity:0}}
-@keyframes kPulse{50%{opacity:.35}}
-@keyframes kBlink{50%{opacity:.45}}
-@keyframes kGlow{50%{box-shadow:0 0 16px rgba(255,200,61,.45)}}
-
-/* ---------- старі панелі в тій самій мові ---------- */
-html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree,#layers,#legend){background:var(--k-g2)!important;border:1px solid var(--k-ln2)!important;border-radius:12px!important;backdrop-filter:blur(14px)!important;box-shadow:0 14px 40px rgba(0,0,0,.55)!important}
-html body.s7-game #controls .btn{background:var(--k-g1)!important;border:1px solid var(--k-ln)!important;border-radius:9px!important;color:var(--k-mut)!important;backdrop-filter:blur(10px)}
-html body.s7-game #controls .btn:hover{color:#fff!important;border-color:var(--k-ln3)!important}
-html body.s7-game #controls .btn.on{color:var(--k-gold)!important;border-color:rgba(255,200,61,.6)!important;background:rgba(255,200,61,.12)!important}
+/* ========================================================== СТАРІ ПАНЕЛІ В ТІЙ САМІЙ МОВІ */
+html body.s7-game :is(#launch,#adp,#facp,#lgp,#gmChat,#gmStat,#gmFree,#legend){
+  background:linear-gradient(180deg,rgba(17,25,38,.93),rgba(9,14,22,.96))!important;border:1px solid var(--k-ln2)!important;border-radius:var(--k-r3)!important;
+  backdrop-filter:blur(18px) saturate(1.3)!important;-webkit-backdrop-filter:blur(18px) saturate(1.3)!important;box-shadow:inset 0 1px 0 var(--k-hi),0 22px 56px -16px rgba(0,0,0,.75)!important;clip-path:none!important}
+html body.s7-game :is(#launch,#adp,#facp,#lgp) .lp-head{border-bottom:1px solid var(--k-ln)!important}
+html body.s7-game :is(#launch,#adp,#facp,#lgp) .lp-foot{border-top:1px solid var(--k-ln)!important;background:rgba(0,0,0,.18)!important}
+html body.s7-game .lp-go{border-radius:var(--k-r2)!important;font-family:var(--k-disp)!important;letter-spacing:.04em!important;clip-path:none!important}
+html body.s7-game .lp-x{border-radius:var(--k-r1)!important;clip-path:none!important}
 html body.s7-game #toast{display:none!important}
-html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!important;border:1px solid var(--k-ln2)!important;border-radius:10px!important;bottom:calc(var(--k-sb) + 46px)!important}
+html body.s7-game :is(#selbar,#pickbar,#followBar){background:linear-gradient(180deg,rgba(17,25,38,.93),rgba(9,14,22,.96))!important;border:1px solid var(--k-ln2)!important;border-radius:var(--k-r2)!important;bottom:calc(var(--k-sb) + 50px)!important;
+  box-shadow:inset 0 1px 0 var(--k-hi),0 16px 40px -12px rgba(0,0,0,.7)!important;clip-path:none!important}
+html body.s7-game :is(#selbar,#pickbar,#followBar) .chip{border-radius:var(--k-r1)!important;clip-path:none!important}
+html body.s7-game #coords{left:calc(var(--k-sl) + var(--k-rail) + var(--k-gap))!important;bottom:calc(var(--k-sb) + 4px)!important;border-radius:var(--k-r2)!important;background:linear-gradient(180deg,rgba(17,25,38,.8),rgba(9,14,22,.88))!important;border:1px solid var(--k-ln)!important;clip-path:none!important;font-family:var(--k-mono)!important}
+html body.s7-game .maplibregl-ctrl-scale{background:rgba(9,14,22,.72)!important;border-color:var(--k-ln3)!important;color:var(--k-mut)!important;font:500 10.5px/1.5 var(--k-mono)!important}
 
+@keyframes kRise{from{opacity:0;transform:translateY(8px)}}
+@keyframes kPop{from{opacity:0;transform:scale(.9)}}
+@keyframes kFade{from{opacity:0}}
+@keyframes kModal{from{opacity:0;transform:translateY(10px) scale(.985)}}
+@keyframes kCard{from{opacity:0;transform:translateY(12px)}}
+@keyframes kReticle{from{inset:6px;opacity:0}to{inset:-5px;opacity:.95}}
+@keyframes kToast{from{opacity:0;transform:translateY(-8px) scale(.97)}}
+@keyframes kToastOut{to{opacity:0;transform:translateY(-6px) scale(.98)}}
+@keyframes kPulse{50%{opacity:.35}}
+@keyframes kBlink{50%{opacity:.5}}
+@keyframes kGlow{50%{box-shadow:0 0 18px rgba(242,181,60,.5)}}
+
+/* ========================================================== АДАПТИВ */
+@media (max-width:1100px){
+  #cmdTop .ib.sr span,#cmdTop .ib.sr kbd{display:none}#cmdTop .ib.sr{padding:0 9px}
+}
 @media (max-width:900px){
   #cmdTop .thr,#cmdTop .mny{display:none}
   #cmdTop .nm small{display:none}
-  :root{--k-drawer:min(320px,calc(100vw - var(--k-rail) - 28px))}
-  #cmdMini{width:170px;height:118px}
-  #cmdLog{width:calc(100vw - 2*var(--k-sl) - 2*var(--k-rail) - 20px);min-width:0}
+  :root{--k-drawer:min(330px,calc(100vw - var(--k-rail) - 34px))}
+  #cmdMini{width:176px;height:122px}
+  #cmdLog{width:calc(100vw - 2*var(--k-sl) - 2*var(--k-rail) - 24px);min-width:0}
+  #cmdKeys .kb{grid-template-columns:1fr}
 }
 @media (max-width:640px){
-  #cmdTop{grid-template-columns:auto 1fr auto}
+  #cmdTop{grid-template-columns:auto 1fr auto;gap:8px;padding:0 8px}
   #cmdTop .sc,#cmdTop .nm,#cmdTop .tl .ph{display:none}
-  #cmdInsp{width:calc(100vw - 2*var(--k-sl) - var(--k-rail) - 16px)}
+  #cmdInsp{width:calc(100vw - 2*var(--k-sl) - var(--k-rail) - 14px)}
   #cmdMini{display:none}
+  [data-tip]::after{display:none}
 }
-@media (prefers-reduced-motion:reduce){#cmd *{animation:none!important;transition:none!important}}
+@media (hover:none){[data-tip]::after{display:none}}
+@media (prefers-reduced-motion:reduce){#cmd *,#cmd *::before,#cmd *::after{animation:none!important;transition:none!important}}
+</style>
+<style id="bv-arms">/* SKYDOMINION · 73 · міжнародні поставки й склад у Львові */
+:root{--ar-bg:rgba(7,13,26,.97);--ar-bd:rgba(88,150,255,.34);--ar-tx:#dbe7ff;--ar-mu:#8da3c8;--ar-gold:#ffc53d;--ar-ok:#3ddc84;--ar-bad:#ff7a6b;--ar-warn:#ffb347;--ar-blue:#4cc3ff}
+#armsZb{position:relative}#armsZb svg{width:20px;height:20px}
+#armsPanel{position:fixed;z-index:12;right:12px;top:calc(70px + var(--safe-t,0px));width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 100px);display:flex;flex-direction:column;background:var(--ar-bg);border:1px solid var(--ar-bd);border-radius:14px;color:var(--ar-tx);font:13px "Exo 2",system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.55);backdrop-filter:blur(10px)}
+#armsPanel[hidden]{display:none}
+#armsPanel .ar-hd{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;font:700 12px var(--mono,monospace);letter-spacing:.06em;text-transform:uppercase}
+#armsPanel .ar-hd b{flex:1}
+#armsPanel .ar-x{background:none;border:0;color:var(--ar-mu);font-size:22px;line-height:1;cursor:pointer}
+#armsPanel .ar-tabs{display:flex;gap:2px;padding:0 8px;border-bottom:1px solid rgba(88,150,255,.16)}
+#armsPanel .ar-tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;color:var(--ar-mu);font:700 11px "Exo 2",sans-serif;text-transform:uppercase;letter-spacing:.05em;padding:8px 2px;cursor:pointer}
+#armsPanel .ar-tabs button.on{color:var(--ar-gold);border-color:var(--ar-gold)}
+#armsPanel .ar-tabs em{margin-left:4px;background:var(--ar-blue);color:#04101f;border-radius:8px;padding:0 5px;font-size:9px;font-style:normal}
+#armsPanel .ar-body{overflow:auto;padding:8px 10px 12px;display:flex;flex-direction:column;gap:8px;min-height:140px}
+#armsPanel .ar-empty{color:var(--ar-mu);text-align:center;padding:18px 6px;line-height:1.5}
+#armsPanel .ar-note{padding:6px 9px;border-radius:8px;background:rgba(255,179,71,.1);border:1px solid rgba(255,179,71,.3);color:var(--ar-warn);font-size:12px;line-height:1.4}
+#armsPanel .ar-note.ok{background:rgba(61,220,132,.1);border-color:rgba(61,220,132,.3);color:var(--ar-ok)}
+#armsPanel .ar-note.bd{background:rgba(255,122,107,.1);border-color:rgba(255,122,107,.35);color:var(--ar-bad)}
+#armsPanel .ar-sum span{display:block;color:var(--ar-mu);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+#armsPanel .ar-sum b{font-size:15px}
+#armsPanel .ar-bar{display:block;height:6px;border-radius:4px;background:rgba(88,150,255,.15);overflow:hidden;margin-top:4px}
+#armsPanel .ar-bar b{display:block;height:100%;background:var(--ar-blue)}
+#armsPanel .ar-bar.bd b{background:var(--ar-bad)}
+#armsPanel .ar-act,#armsPanel .ar-flt{display:flex;gap:6px;flex-wrap:wrap}
+#armsPanel button:not(.ar-x){background:rgba(47,140,255,.12);border:1px solid rgba(88,150,255,.3);color:var(--ar-tx);border-radius:10px;padding:6px 11px;font:600 12px "Exo 2",sans-serif;cursor:pointer}
+#armsPanel button:disabled{opacity:.4;cursor:not-allowed}
+#armsPanel .ar-flt button.on,#armsPanel button.go{background:rgba(255,197,61,.16);border-color:var(--ar-gold);color:var(--ar-gold)}
+#armsPanel button.bd{color:var(--ar-bad);border-color:rgba(255,122,107,.45)}
+#armsPanel .ar-sm{padding:3px 8px!important;font-size:11px!important}
+#armsPanel .ar-tb{width:100%;border-collapse:collapse;font-size:12px}
+#armsPanel .ar-tb th{color:var(--ar-mu);font:600 10px var(--mono,monospace);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:4px 5px;border-bottom:1px solid rgba(88,150,255,.2)}
+#armsPanel .ar-tb td{padding:5px;border-bottom:1px solid rgba(88,150,255,.08);vertical-align:middle}
+#armsPanel .ar-tb td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+#armsPanel .ar-tb small{display:block;color:var(--ar-mu);font-size:10px}
+#armsPanel .ar-tb.sm{font-size:11px}
+#armsPanel .ar-in{width:46px;text-align:center;background:#0a1328;border:1px solid var(--ar-bd);color:var(--ar-tx);border-radius:6px;padding:3px;margin:0 3px}
+#armsPanel .ok{color:var(--ar-ok)}#armsPanel .bd{color:var(--ar-bad)}#armsPanel .wn{color:var(--ar-warn)}
+#armsPanel .ar-chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;background:rgba(141,163,200,.15);color:var(--ar-mu);white-space:nowrap}
+#armsPanel .ar-chip.ok{background:rgba(61,220,132,.15)}#armsPanel .ar-chip.bd{background:rgba(255,122,107,.15)}#armsPanel .ar-chip.wn{background:rgba(255,179,71,.15)}#armsPanel .ar-chip.bl{background:rgba(76,195,255,.15);color:var(--ar-blue)}
+#armsPanel .ar-ship,#armsPanel .ar-ac{border:1px solid rgba(88,150,255,.2);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;background:rgba(47,140,255,.05)}
+#armsPanel .ar-ac.lost{opacity:.6}
+#armsPanel .ar-sh{display:flex;gap:8px;align-items:center;cursor:pointer;flex-wrap:wrap}
+#armsPanel .ar-sh span{flex:1;color:var(--ar-mu)}
+#armsPanel .ar-sm2{color:var(--ar-mu);font-size:11.5px;line-height:1.45}
+#armsPanel .ar-sum2{font-size:12.5px}
+#armsPanel .ar-chk{display:flex;gap:8px;align-items:center;color:var(--ar-mu);font-size:12px}
+#armsPanel .ar-ev{border-top:1px solid rgba(88,150,255,.16);padding-top:6px;color:var(--ar-mu);font-size:11px;display:grid;gap:2px}
+@media(max-width:640px){#armsPanel{right:6px;left:6px;width:auto;top:calc(56px + var(--safe-t,0px))}#armsPanel .ar-tb th:nth-child(n+6),#armsPanel .ar-tb.sm th:nth-child(7){display:none}}
 </style>
 <script id="cmd-js">/* SKYDOMINION · COMMAND DECK — командний шар бойового екрана.
    Усе тут читає реальний стан гри через BV_API (units, ADS, OBJS, GAME, SIM, радари, туман війни) і шину подій BV_EV;
@@ -34179,7 +34431,8 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     port: "M12 4v12M8 8h8M4 15c0 3 4 5 8 5s8-2 8-5", fac: "M3 20V10l5 3V10l5 3V6h4v14z", post: "M4 17a8 8 0 0 1 16 0M8 17a4 4 0 0 1 8 0M12 17h.01",
     node: "M12 4v16M4 12h16M12 12m-2 0a2 2 0 1 0 4 0 2 2 0 1 0-4 0", fs: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
     target: "M12 3v4M12 17v4M3 12h4M17 12h4M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0", flag: "M6 21V4M6 5h11l-2 4 2 4H6",
-    chat: "M4 5h16v11H9l-5 4z", stat: "M5 20V10M12 20V4M19 20v-7", gen: "M12 8v4M12 16h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"
+    chat: "M4 5h16v11H9l-5 4z", stat: "M5 20V10M12 20V4M19 20v-7", gen: "M12 8v4M12 16h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z",
+    copy: "M9 9h10v11H9zM5 15V4h10", cmd: "M4 6l5 5-5 5M12 17h8", eye: "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"
   };
   const ico = (d, c) => `<svg class="k-ico ${c || ""}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
 
@@ -34204,6 +34457,15 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     "Нічого не знайдено": ["Ничего не найдено", "Nothing found"], "Ваша техніка відсутня": ["Вашей техники нет", "No own assets"], "Об'єктів немає": ["Объектов нет", "No objects"],
     "Упевненість": ["Уверенность", "Confidence"], "Вік даних": ["Возраст данных", "Data age"], "Розпізнано": ["Опознано", "Identified"], "Виявлено": ["Обнаружено", "Detected"], "Втрачено": ["Потеряно", "Lost"]
   };
+  Object.assign(DICT, {
+    "Пресети": ["Пресеты", "Presets"], "Бойовий": ["Боевой", "Combat"], "Чистий": ["Чистый", "Clean"], "Розвідка": ["Разведка", "Recon"],
+    "Копіювати координати": ["Копировать координаты", "Copy coordinates"], "Координати скопійовано": ["Координаты скопированы", "Coordinates copied"],
+    "Команди": ["Команды", "Commands"], "Цілі": ["Цели", "Targets"], "Панелі": ["Панели", "Panels"], "Карта": ["Карта", "Map"], "Накладки": ["Наложения", "Overlays"], "Система": ["Система", "System"],
+    "Наступна ціль": ["Следующая цель", "Next target"], "Попередня ціль": ["Предыдущая цель", "Previous target"], "Центрувати на виборі": ["Центрировать на выборе", "Center on selection"],
+    "Наблизити · віддалити": ["Приблизить · отдалить", "Zoom in · out"], "Підписи цілей": ["Подписи целей", "Target labels"], "Пошук": ["Поиск", "Search"],
+    "Вибір": ["Выбор", "Select"], "Перейти": ["Перейти", "Go"], "Увімкнено": ["Включено", "Enabled"], "Вимкнено": ["Выключено", "Disabled"], "Стан": ["Состояние", "Status"],
+    "Міцність": ["Прочность", "Integrity"], "Боєкомплект": ["Боекомплект", "Ammo"], "Ракети": ["Ракеты", "Missiles"], "Упевненість": ["Уверенность", "Confidence"], "Вік даних": ["Возраст данных", "Data age"]
+  });
   function i18n() { try { if (A() && A().i18nAdd) A().i18nAdd(DICT); } catch (e) { /* */ } }
 
   /* ------------------------------------------------------------------ стан шару */
@@ -34280,49 +34542,69 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
   }
 
   /* ------------------------------------------------------------------ DOM */
-  function build() {
+function build() {
     root = document.createElement("div"); root.id = "cmd";
+    const rb = (tab, ic, nm, key, bg) => `<button class="rb" data-tab="${tab}" aria-label="${nm} (${key})">${ico(IC[ic])}<span class="tt">${nm}<kbd>${key}</kbd></span>${bg ? `<i class="bg ${bg[1]}" id="${bg[0]}"></i>` : ""}</button>`;
     root.innerHTML = `
     <canvas id="cmdOv"></canvas>
-    <header id="cmdTop" class="k-pn k-br">
-      <div class="tl"><svg class="mark" viewBox="0 0 32 32" fill="none"><rect x="1" y="1" width="30" height="30" rx="7" stroke="#ff4d3f" stroke-opacity=".6"/><path d="M7 24 16 7l9 17" stroke="#f1f3f5" stroke-width="2.2" stroke-linejoin="round"/><path d="M11.5 18.5h9" stroke="#ffc83d" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="#ffc83d"/></svg>
+    <header id="cmdTop" class="k-pn">
+      <div class="tl"><svg class="mark" viewBox="0 0 32 32" fill="none"><rect x="1" y="1" width="30" height="30" rx="8" stroke="#f2b53c" stroke-opacity=".55"/><path d="M7 24 16 7l9 17" stroke="#f1f3f5" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><path d="M11.5 18.5h9" stroke="#f2b53c" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="#f2b53c"/></svg>
         <div class="nm"><b>SKY<i>DOMINION</i></b><small id="ctMode">—</small></div><div class="ph" id="ctPh">—</div></div>
       <div class="tc"><button class="pp" id="ctPause" title="Пауза (Пробіл)">${ico(IC.pause)}</button>
         <div class="clk"><span class="t" id="ctClk">00:00</span><span class="d" id="ctDay">—</span></div>
-        <div class="sc" id="ctSc"><span class="ua">0</span><em>:</em><span class="ru">0</span></div></div>
+        <div class="sc" id="ctSc" title="Очки сторін: Україна : Росія"><span class="ua">0</span><em>:</em><span class="ru">0</span></div></div>
       <div class="tr"><div class="thr" id="ctThr" data-l="0"><small><span>Загроза</span><b id="ctThrN">0</b></small><div class="bar"><i></i><i></i><i></i><i></i><i></i></div></div>
         <div class="mny" id="ctMny" style="display:none"><b>—</b><small>бюджет</small></div>
         <button class="go" id="ctReady" style="display:none">Готово</button>
-        <button class="ib" id="ctSearch" title="Пошук (Ctrl+K)">${ico(IC.search)}</button>
-        <button class="ib" id="ctMore" title="Меню бою">${ico(IC.dots)}</button></div>
+        <button class="ib sr" id="ctSearch" aria-label="Пошук (Ctrl K)">${ico(IC.search)}<span>Пошук</span><kbd>Ctrl K</kbd></button>
+        <button class="ib" id="ctMore" aria-label="Меню бою">${ico(IC.dots)}</button></div>
       <div class="prg"><i id="ctPrg"></i></div>
     </header>
     <div id="cmdMenu" class="k-pn"></div>
-    <nav id="cmdRail" class="k-pn k-br" aria-label="Навігація">
-      <button class="rb" data-tab="threat" title="Обстановка (1)">${ico(IC.threat)}<span>Обстановка</span><i class="bg" id="bgThr"></i></button>
-      <button class="rb" data-tab="assets" title="Техніка (2)">${ico(IC.assets)}<span>Техніка</span><i class="bg cy" id="bgAst"></i></button>
-      <button class="rb" data-tab="objs" title="Об'єкти (3)">${ico(IC.objs)}<span>Об'єкти</span><i class="bg" id="bgObj"></i></button>
-      <button class="rb" data-tab="log" title="Журнал (4)">${ico(IC.log)}<span>Журнал</span><i class="bg cy" id="bgLog"></i></button>
-      <button class="rb" data-tab="layers" title="Шари (5)">${ico(IC.layers)}<span>Шари</span></button>
-      <hr><button class="rb" data-act="help" title="Гарячі клавіші (?)">${ico(IC.help)}<span>Довідка</span></button>
+    <nav id="cmdRail" class="k-pn" aria-label="Навігація">
+      ${rb("threat", "threat", "Обстановка", "1", ["bgThr", ""])}${rb("assets", "assets", "Техніка", "2", ["bgAst", "cy"])}${rb("objs", "objs", "Об'єкти", "3", ["bgObj", ""])}${rb("log", "log", "Журнал", "4", ["bgLog", "cy"])}${rb("layers", "layers", "Шари", "5")}
+      <hr><button class="rb" data-act="help" aria-label="Гарячі клавіші (?)">${ico(IC.help)}<span class="tt">Гарячі клавіші<kbd>?</kbd></span></button>
     </nav>
-    <aside id="cmdDrawer" class="k-pn k-br"><div class="dh"><h3 id="cdT"></h3><button class="x" data-act="close" aria-label="Закрити">${ico(IC.x)}</button></div><div class="db" id="cdB"></div></aside>
-    <section id="cmdInsp" class="k-pn k-br"></section>
+    <aside id="cmdDrawer" class="k-pn"><div class="dh"><div class="tt"><h3 id="cdT"></h3><span class="ds" id="cdS"></span></div><button class="x" data-act="close" aria-label="Закрити">${ico(IC.x)}</button></div><div class="db" id="cdB"></div></aside>
+    <section id="cmdInsp" class="k-pn"></section>
     <div id="cmdAlert" class="k-pn"><svg class="sg k-ico" viewBox="0 0 24 24"><path d="${IC.warn}"/></svg><b id="caT">Повітряна тривога</b><span id="caS"></span></div>
-    <section id="cmdMini" class="k-pn k-br"><canvas id="cmdMiniC"></canvas><div class="mh">Мінікарта</div><button class="mx" data-act="mini" aria-label="Сховати">${ico(IC.x)}</button></section>
-    <button id="cmdMiniOpen" class="k-pn" style="display:none" title="Мінікарта (M)">${ico(IC.map)}</button>
-    <section id="cmdLog" class="k-pn k-br"><button class="lh" id="clH"><b>Журнал</b><span id="clL"><i></i>Подій поки немає</span><em id="clC"></em><i class="cnt" id="clN">0</i></button></section>
+    <div id="cmdToasts" aria-live="polite"></div>
+    <section id="cmdMini" class="k-pn"><canvas id="cmdMiniC"></canvas><div class="mh">Мінікарта</div><button class="mx" data-act="mini" aria-label="Сховати">${ico(IC.x)}</button></section>
+    <button id="cmdMiniOpen" class="k-pn" style="display:none" aria-label="Мінікарта (M)">${ico(IC.map)}</button>
+    <section id="cmdLog" class="k-pn"><button class="lh" id="clH"><b>Журнал</b><span id="clL"><i></i>Подій поки немає</span><em id="clC"></em><i class="cnt" id="clN">0</i></button></section>
     <div id="cmdTip"></div>
-    <div id="cmdPal"><div class="box k-pn k-br"><input id="cpIn" placeholder="Пошук цілей, техніки, об'єктів…" autocomplete="off" spellcheck="false"><div class="res" id="cpR"></div></div></div>
-    <div id="cmdKeys"><div class="box k-pn k-br"><h3>Гарячі клавіші</h3><div class="g">
-      <div>Пауза / продовжити<kbd>Пробіл</kbd></div><div>Обстановка · Техніка · Об'єкти<kbd>1 · 2 · 3</kbd></div><div>Журнал · Шари<kbd>4 · 5</kbd></div><div>Пошук<kbd>Ctrl K · /</kbd></div>
-      <div>Наступна / попередня ціль<kbd>] · [</kbd></div><div>Найближча загроза<kbd>N</kbd></div><div>Супровід вибраної цілі<kbd>F</kbd></div><div>Загальний вид<kbd>Home</kbd></div>
-      <div>Сітка · Зони ППО<kbd>G · Z</kbd></div><div>РЛС · Вектори · Сліди<kbd>R · V · T</kbd></div><div>Мінікарта<kbd>M</kbd></div><div>Закрити все<kbd>Esc</kbd></div></div></div></div>`;
+    <div id="cmdPal"><div class="box k-pn"><div class="pin">${ico(IC.search)}<input id="kpIn" placeholder="Пошук цілей, техніки, об'єктів…" autocomplete="off" spellcheck="false"><kbd>Esc</kbd></div><div class="res" id="kpR"></div>
+      <div class="pf"><span><kbd>↑</kbd><kbd>↓</kbd>Вибір</span><span><kbd>Enter</kbd>Перейти</span></div></div></div>
+    <div id="cmdKeys"><div class="box k-pn"><div class="kh"><h3>Гарячі клавіші</h3><button class="kx" data-act="keysx" aria-label="Закрити">${ico(IC.x)}</button></div><div class="kb">${keysHtml()}</div></div></div>`;
     body.appendChild(root);
     const ov = $("cmdOv"); body.insertBefore(ov, $("map").nextSibling); ov.style.cssText = "";   // канва — одразу над мапою, під інтерфейсом
     wire();
   }
 
+  /* гарячі клавіші: єдине джерело для довідки (і нагадування в палітрі) */
+  const KEYS = [
+    ["Панелі", [["Обстановка", ["1"]], ["Техніка", ["2"]], ["Об'єкти", ["3"]], ["Журнал", ["4"]], ["Шари мапи", ["5"]]]],
+    ["Обстановка", [["Наступна ціль", ["]"]], ["Попередня ціль", ["["]], ["Найближча загроза", ["N"]], ["Супровід цілі", ["F"]], ["Центрувати на виборі", ["C"]]]],
+    ["Карта", [["Загальний вид", ["Home"]], ["Наблизити · віддалити", ["+", "−"]], ["Мінікарта", ["M"]], ["Пошук", ["Ctrl", "K"]]]],
+    ["Накладки", [["Сітка координат", ["G"]], ["Зони прикриття ППО", ["Z"]], ["Виявлення РЛС", ["R"]], ["Вектори загроз", ["V"]], ["Сліди руху", ["T"]], ["Підписи цілей", ["B"]]]],
+    ["Система", [["Пауза / продовжити", ["Пробіл"]], ["Довідка", ["?"]], ["Закрити все", ["Esc"]]]]
+  ];
+  function keysHtml() {
+    return KEYS.map(([g, rows]) => `<div class="grp"><h4>${g}</h4>${rows.map(([n, ks]) => `<div class="r"><span>${n}</span><span class="ks">${ks.map(k => `<kbd>${k}</kbd>`).join("")}</span></div>`).join("")}</div>`).join("");
+  }
+
+  /* сповіщення зверху: коротка відповідь інтерфейсу на дію */
+  function say(m, kind) {
+    const box = $("cmdToasts"); if (!box || !m) return; m = String(m);
+    const dismiss = e => { e.classList.add("out"); setTimeout(() => e.remove(), 220); };
+    const last = box.lastElementChild;
+    if (last && last._m === m && !last.classList.contains("out")) { clearTimeout(last._to); last._to = setTimeout(() => dismiss(last), 2800); return; }
+    const e = document.createElement("div"); e.className = "kt " + (kind || "info"); e.textContent = m; e._m = m; box.appendChild(e);
+    while (box.children.length > 3) box.firstElementChild.remove();
+    e._to = setTimeout(() => dismiss(e), kind === "warn" || kind === "alert" ? 4200 : 2800);
+  }
+
+  
   /* ------------------------------------------------------------------ керування вкладками */
   const TABS = { threat: "Обстановка", assets: "Техніка", objs: "Об'єкти", log: "Журнал", layers: "Шари мапи" };
   function openTab(t) {
@@ -34330,7 +34612,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     C.tab = t; body.classList.toggle("k-dr", !!t);
     $("cmdDrawer").classList.toggle("on", !!t);
     root.querySelectorAll("#cmdRail .rb[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
-    if (t) { $("cdT").textContent = TABS[t]; C.sig = ""; renderDrawer(true); if (t === "log") { C.logNew = 0; updBadges(); } }
+    if (t) { $("cdT").textContent = TABS[t]; $("cmdDrawer").classList.remove("still"); C.sig = ""; renderDrawer(true); if (t === "log") { C.logNew = 0; updBadges(); } }
   }
   function updBadges() {
     const set = (id, n, cls) => { const e = $(id); if (!e) return; e.textContent = n > 99 ? "99+" : n; e.classList.toggle("on", n > 0); };
@@ -34362,9 +34644,9 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     const sig = [C.thrFilter, C.thrSort, rows.map(r => r.id).join(","), C.sel && C.sel.id].join("|");
     if (!force && sig === C.sig) { patchThreat(rows); return; }
     C.sig = sig;
-    const head = `<div class="k-kpis"><div class="k-kpi"><small>Цілі в повітрі</small><b class="${lv.n ? "b" : "g"}" id="kpN">${lv.n}</b></div><div class="k-kpi"><small>Найближчий вплив</small><b class="${lv.eta != null && lv.eta < 30 ? "b" : "w"}" id="kpE">${fmtT(lv.eta)}</b></div>
+    const head = `<div class="k-kpis q"><div class="k-kpi"><small>У повітрі</small><b class="${lv.n ? "b" : "g"}" id="kpN">${lv.n}</b></div><div class="k-kpi"><small>До впливу</small><b class="${lv.eta != null && lv.eta < 30 ? "b" : "w"}" id="kpE">${fmtT(lv.eta)}</b></div>
       <div class="k-kpi"><small>Збито</small><b class="g">${down}</b></div><div class="k-kpi"><small>Прорвалося</small><b class="${leaks ? "w" : ""}">${leaks}</b></div></div>
-      <div class="k-chips">${chips}</div><div class="k-chips"><button class="k-chip ${C.thrSort === "eta" ? "on" : ""}" data-ths="eta">за часом</button><button class="k-chip ${C.thrSort === "dist" ? "on" : ""}" data-ths="dist">за відстанню</button><button class="k-chip ${C.thrSort === "name" ? "on" : ""}" data-ths="name">за типом</button></div>`;
+      <div class="k-chips">${chips}</div><div class="k-sortl">Сортування</div><div class="k-chips"><button class="k-chip ${C.thrSort === "eta" ? "on" : ""}" data-ths="eta">за часом</button><button class="k-chip ${C.thrSort === "dist" ? "on" : ""}" data-ths="dist">за відстанню</button><button class="k-chip ${C.thrSort === "name" ? "on" : ""}" data-ths="name">за типом</button></div>`;
     let h = head;
     if (!rows.length) h += `<div class="k-empty">${ico(IC.threat)}<br>${fogLive() ? "Немає виявлених цілей" : "Небо чисте"}</div>`;
     for (const r of rows.slice(0, 120)) h += threatRowHtml(r);
@@ -34454,56 +34736,85 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     if (atEnd) box.scrollTop = box.scrollHeight;
   }
 
+  const PRESETS = { combat: { cover: 1, detect: 1, vec: 1, lbl: 1, trail: 1, grid: 0 }, clean: { cover: 0, detect: 0, vec: 0, lbl: 0, trail: 0, grid: 0 }, recon: { cover: 0, detect: 1, vec: 1, lbl: 1, trail: 1, grid: 1 } };
+  const presetOn = p => OV_KEYS.every(k => !!OV[k] === !!PRESETS[p][k]);
   function renderLayers() {
     if (C.sig === "L" + JSON.stringify(OV)) return; C.sig = "L" + JSON.stringify(OV);
-    const tg = (k, n, d) => `<label class="k-tg"><input type="checkbox" data-ov="${k}" ${OV[k] ? "checked" : ""}><span class="sw"></span><span class="l">${n}<small>${d}</small></span></label>`;
-    let h = `<div class="k-sec">Тактичні накладки</div>` + tg("cover", "Зони прикриття ППО", "радіуси дії систем сторін, перекриття підсилюють колір") + tg("detect", "Виявлення РЛС", "дальність виявлення радіолокаційних станцій, розгортка") +
-      tg("vec", "Вектори загроз", "курс, маршрут до цілі й час до влучання") + tg("lbl", "Підписи цілей", "позивний, тип і ETA біля кожної цілі") + tg("trail", "Сліди руху", "траєкторії останніх хвилин") + tg("grid", "Сітка координат", "градусна сітка з підписами на краях") +
-      `<div class="k-sec">Шари мапи</div>`;
+    const tg = (k, n, d, key) => `<label class="k-tg"><input type="checkbox" data-ov="${k}" ${OV[k] ? "checked" : ""}><span class="sw"></span><span class="l">${n}<small>${d}</small></span><span class="kk"><kbd>${key}</kbd></span></label>`;
+    const pre = [["combat", "Бойовий"], ["clean", "Чистий"], ["recon", "Розвідка"]];
+    let h = `<div class="k-sec">Пресети</div><div class="k-pre">${pre.map(([k, n]) => `<button data-pre="${k}" class="${presetOn(k) ? "on" : ""}">${n}</button>`).join("")}</div>` +
+      `<div class="k-sec">Тактичні накладки</div><div class="k-card">` + tg("cover", "Зони прикриття ППО", "радіуси дії систем сторін, перекриття підсилюють колір", "Z") + tg("detect", "Виявлення РЛС", "дальність виявлення радіолокаційних станцій, розгортка", "R") +
+      tg("vec", "Вектори загроз", "курс, маршрут до цілі й час до влучання", "V") + tg("lbl", "Підписи цілей", "позивний, тип і ETA біля кожної цілі", "B") + tg("trail", "Сліди руху", "траєкторії останніх хвилин", "T") + tg("grid", "Сітка координат", "градусна сітка з підписами на краях", "G") +
+      `</div><div class="k-sec">Шари мапи</div><div class="k-card">`;
     const inputs = [...document.querySelectorAll("#layers input[type=checkbox]")];
     for (const i of inputs) { const lab = i.closest("label"); const nm = lab ? lab.textContent.trim() : i.dataset.group; h += `<label class="k-tg"><input type="checkbox" data-proxy="${inputs.indexOf(i)}" ${i.checked ? "checked" : ""}><span class="sw"></span><span class="l">${esc(nm)}</span></label>`; }
-    $("cdB").innerHTML = h;
+    $("cdB").innerHTML = h + `</div>`;
+  }
+  const OV_KEYS = ["cover", "detect", "vec", "lbl", "trail", "grid"];
+  function drawerSub() {
+    const a = A(), n = C.thr.filter(t => !t.carrier).length;
+    switch (C.tab) {
+      case "threat": return n ? n + " цілей у повітрі" : fogLive() ? "Немає виявлених цілей" : "Небо чисте";
+      case "assets": return ownAssets().length + " систем ППО";
+      case "objs": return (C.objRisk | 0) ? (C.objRisk | 0) + " у зоні ризику" : "Усі об'єкти під контролем";
+      case "log": return C.log.length + " подій";
+      case "layers": return OV_KEYS.filter(k => OV[k]).length + " із " + OV_KEYS.length + " накладок активні";
+    }
+    return "";
   }
   function renderDrawer(force) {
     if (!C.tab) return;
     const keepScroll = $("cdB").scrollTop;
     ({ threat: renderThreat, assets: renderAssets, objs: renderObjs, log: renderLog, layers: renderLayers })[C.tab](force);
     if (C.tab !== "log") $("cdB").scrollTop = keepScroll;
+    const sub = drawerSub(), e = $("cdS"); if (e && e.textContent !== sub) e.textContent = sub;
+    const dr = $("cmdDrawer"); if (!dr.classList.contains("still")) setTimeout(() => dr.classList.add("still"), 420);   // вхідна анімація — лише при відкритті
   }
 
   /* ------------------------------------------------------------------ інспектор */
   function setSel(s) { C.sel = s; C.sig = ""; renderInsp(); renderDrawer(true); }
   function renderInsp() {
-    const el = $("cmdInsp"), a = A(), s = C.sel; if (!s) { el.classList.remove("on"); return; }
-    let h = "", ok = false;
-    const hd = (ic, nm, sub, cls) => `<div class="ih"><div class="ic">${ic}</div><div><b>${esc(nm)}</b><small class="${cls || ""}">${esc(sub)}</small></div><button class="x" data-act="insx">${ico(IC.x)}</button></div>`;
-    const st = (k, v, span) => `<div class="is ${span ? "span" : ""}"><small>${k}</small><b>${v}</b></div>`;
+    const el = $("cmdInsp"), a = A(), s = C.sel; if (!s) { el.classList.remove("on"); el._sid = null; return; }
+    let h = "", ok = false, side = "";
+    const hd = (ic, nm, sub) => `<div class="ih"><div class="ic">${ic}</div><div><b>${esc(nm)}</b><small>${esc(sub)}</small></div><button class="x" data-act="insx" aria-label="Закрити">${ico(IC.x)}</button></div>`;
+    const st = (k, v, span, cls) => `<div class="is ${span ? "span" : ""}"><small>${k}</small><b class="${cls || ""}">${v}</b></div>`;
+    const pill = (t, c) => `<span class="pill ${c || ""}">${t}</span>`;
+    const gauge = (lb, val, pc, cls) => `<div class="kg"><div class="t"><span>${lb}</span><b>${val}</b></div><div class="k-bar"><i class="${cls || ""}" style="width:${clamp(pc, 0, 100)}%"></i></div></div>`;
+    const body2 = x => `<div class="ib2">${x}</div>`;
     if (s.type === "thr") {
       const t = C.thr.find(x => x.id === s.id);
       if (t) {
-        ok = true; const dm = (() => { let d = Infinity; for (const u of ownAssets()) { const k = fastKm(t.pos, u.pos); if (k < d) d = k; } return isFinite(d) ? d : null; })();
-        h = hd(unitIconHtml(t), t.name, (t.side ? a.SIDE_N[t.side] + " · " : "") + t.cs, t.side) + `<div class="ig">` + st("Швидкість", t.spd ? t.spd + " км/год" : "—") + st("Курс", t.hdg != null ? Math.round(t.hdg) + "°" : "—") + (t.fog ? st("Упевненість", Math.round((t.conf || 0) * 100) + "%") + st("Вік даних", Math.round(t.age || 0) + " с") : st("Час до цілі", fmtT(t.eta)) + st("До ППО", fmtKm(dm))) +
+        ok = true; side = t.side || "";
+        const dm = (() => { let d = Infinity; for (const u of ownAssets()) { const k = fastKm(t.pos, u.pos); if (k < d) d = k; } return isFinite(d) ? d : null; })();
+        const pl = t.fog ? pill(({ identified: "Розпізнано", detected: "Виявлено", lost: "Втрачено" })[t.st] || t.st, t.st === "lost" ? "warn" : "ok") : t.eta != null && t.eta < 20 ? pill("Влучання за " + fmtT(t.eta), "bad") : t.eta != null && t.eta < 60 ? pill("До цілі " + fmtT(t.eta), "warn") : pill("У польоті");
+        h = hd(unitIconHtml(t), t.name, (t.side ? a.SIDE_N[t.side] + " · " : "") + t.cs) + body2(pl + `<div class="ig">` + st("Швидкість", t.spd ? t.spd + " км/год" : "—") + st("Курс", t.hdg != null ? Math.round(t.hdg) + "°" : "—") + (t.fog ? st("Упевненість", Math.round((t.conf || 0) * 100) + "%") + st("Вік даних", Math.round(t.age || 0) + " с") : st("Час до цілі", fmtT(t.eta), false, t.eta != null && t.eta < 20 ? "b" : "") + st("До ППО", fmtKm(dm))) +
           (t.from ? st("Пуск", esc(t.from.replace("Ручний запуск · ", "")), true) : "") + (t.target ? st("Ціль", esc(t.target), true) : "") + `</div>
-          <div class="k-act" style="margin:0"><button class="k-btn pri" data-act="follow">Супровід</button><button class="k-btn" data-act="locate">На мапі</button></div>`;
+          <div class="k-act"><button class="k-btn pri" data-act="follow">${ico(IC.target)}Супровід</button><button class="k-btn" data-act="locate">${ico(IC.map)}На мапі</button></div>`);
       }
     } else if (s.type === "ad") {
       const u = a.ADS.units.get(s.rid), T = u && a.AD_TYPES[u.key];
       if (u && T) {
-        ok = true; const cap = T.mag | 0, dm = window.BV_DMG ? window.BV_DMG.level(u.id) : 0, mine = sides().includes(u.side || "ua");
-        h = hd(`<img src="${a.adSrc(u.key)}" alt="">`, T.n, a.SIDE_N[u.side || "ua"] + " · " + T.type, u.side || "ua") + `<div class="ig">` + st("Стан", esc(({ ready: "Готова", reload: "Перезарядка " + Math.ceil(u.rl || 0) + " с", move: "Переміщення", patrol: "Патруль", base: "На базі", transit: "Виліт", rtb: "Повернення" })[u.state] || u.state)) + st("Режим", u.mode === "manual" ? "Вручну" : "Автоматично") +
-          st(T.gun ? "Боєкомплект" : "Ракети", (u.mag | 0) + " / " + cap) + st("Резерв", u.reserve === Infinity ? "∞" : (u.reserve | 0)) + st("Радіус", T.r + " км") + st("Збиття", u.kills | 0) + (dm ? st("Стан техніки", "ушкоджена", true) : "") + `</div>` +
-          (mine ? `<div class="k-act" style="margin:0"><button class="k-btn pri" data-act="ad-focus">На мапі</button><button class="k-btn" data-act="ad-reload">Перезарядка</button><button class="k-btn" data-act="ad-mode">${u.mode === "manual" ? "Автоматично" : "Вручну"}</button>` +
-            (dm ? `<button class="k-btn" data-act="ad-repair">Ремонт</button>` : "") + (T.air ? `<button class="k-btn" data-act="ad-rtb">Повернути</button>` : "") + `<button class="k-btn dng" data-act="ad-remove">Зняти</button></div>` : `<div class="k-act" style="margin:0"><button class="k-btn" data-act="ad-focus">На мапі</button></div>`);
+        ok = true; side = u.side || "ua"; const cap = T.mag | 0, mag = u.mag | 0, pc = cap ? mag / cap * 100 : 0, dm = window.BV_DMG ? window.BV_DMG.level(u.id) : 0, mine = sides().includes(u.side || "ua"), low = cap > 0 && mag / cap < 0.34 && !(u.reserve > 0);
+        const stN = ({ ready: "Готова", reload: "Перезарядка " + Math.ceil(u.rl || 0) + " с", move: "Переміщення", patrol: "Патруль", base: "На базі", transit: "Виліт", rtb: "Повернення" })[u.state] || u.state;
+        h = hd(`<img src="${a.adSrc(u.key)}" alt="">`, T.n, a.SIDE_N[u.side || "ua"] + " · " + T.type) + body2(pill(esc(stN), dm ? "bad" : u.state === "ready" || u.state === "patrol" ? "ok" : low ? "warn" : "") + (cap ? gauge(T.gun ? "Боєкомплект" : "Ракети", mag + " / " + cap, pc, low ? "b" : pc < 50 ? "w" : "") : "") +
+          `<div class="ig">` + st("Режим", u.mode === "manual" ? "Вручну" : "Автоматично") + st("Резерв", u.reserve === Infinity ? "∞" : (u.reserve | 0)) + st("Радіус", T.r + " км") + st("Збиття", u.kills | 0, false, (u.kills | 0) ? "g" : "") + (dm ? st("Стан техніки", "ушкоджена", true, "b") : "") + `</div>` +
+          (mine ? `<div class="k-act"><button class="k-btn pri" data-act="ad-focus">${ico(IC.map)}На мапі</button><button class="k-btn" data-act="ad-reload">Перезарядка</button><button class="k-btn" data-act="ad-mode">${u.mode === "manual" ? "Автоматично" : "Вручну"}</button>` +
+            (dm ? `<button class="k-btn" data-act="ad-repair">Ремонт</button>` : "") + (T.air ? `<button class="k-btn" data-act="ad-rtb">Повернути</button>` : "") + `<button class="k-btn dng" data-act="ad-remove">Зняти</button></div>` : `<div class="k-act"><button class="k-btn" data-act="ad-focus">${ico(IC.map)}На мапі</button></div>`));
       }
     } else if (s.type === "obj") {
       const o = a.OBJS[s.rid]; if (o) {
-        ok = true; const G = a.GAME, free = G.mode === "free" || !G.obj || G.obj.length !== a.OBJS.length, hp = free ? o.hp : G.obj[o.i], f = o.hp ? clamp(hp / o.hp, 0, 1) : 1, cv = coverAt(o.c, o.side);
-        h = hd(ico(OBJ_IC[o.t] || IC.gen), o.n, a.SIDE_N[o.side] + " · " + (OBJ_N[o.t] || o.t), o.side) + `<div class="ig">` + st("Міцність", !free && hp <= 0 ? "знищено" : Math.round(f * 100) + "%") + st("Прикриття ППО", cv.n ? cv.n + " сист. · " + Math.round(cv.v * 100) + "%" : "Незахищено") + st("Координати", o.c[1].toFixed(3) + "°, " + o.c[0].toFixed(3) + "°", true) + `</div>
-          <div class="k-act" style="margin:0"><button class="k-btn pri" data-act="obj-focus">На мапі</button></div>`;
+        ok = true; side = o.side; const G = a.GAME, free = G.mode === "free" || !G.obj || G.obj.length !== a.OBJS.length, hp = free ? o.hp : G.obj[o.i], f = o.hp ? clamp(hp / o.hp, 0, 1) : 1, cv = coverAt(o.c, o.side), dead = !free && hp <= 0;
+        h = hd(ico(OBJ_IC[o.t] || IC.gen), o.n, a.SIDE_N[o.side] + " · " + (OBJ_N[o.t] || o.t)) + body2((dead ? pill("Знищено", "bad") : cv.n ? pill("Під прикриттям ППО", "ok") : pill("Незахищено", "warn")) +
+          gauge("Міцність", dead ? "знищено" : Math.round(f * 100) + "%", dead ? 0 : f * 100, dead || f < 0.5 ? "b" : f < 0.8 ? "w" : "") + `<div class="ig">` + st("Прикриття ППО", cv.n ? cv.n + " сист. · " + Math.round(cv.v * 100) + "%" : "Незахищено", true, cv.n ? "g" : "w") + st("Координати", o.c[1].toFixed(3) + "°, " + o.c[0].toFixed(3) + "°", true) + `</div>
+          <div class="k-act"><button class="k-btn pri" data-act="obj-focus">${ico(IC.map)}На мапі</button><button class="k-btn" data-act="obj-copy">${ico(IC.copy)}Копіювати координати</button></div>`);
       }
     }
-    if (!ok) { C.sel = null; el.classList.remove("on"); return; }
-    el.innerHTML = h; el.classList.add("on");
+    if (!ok) { C.sel = null; el.classList.remove("on"); el._sid = null; return; }
+    const sid = s.type + ":" + (s.id != null ? s.id : s.rid);
+    el.dataset.side = side;
+    if (el._h !== h) { el.innerHTML = h; el._h = h; }
+    if (el._sid !== sid) { el._sid = sid; el.classList.remove("on"); void el.offsetWidth; }   // нова картка — анімація «прицілу» грає знову
+    el.classList.add("on");
   }
 
   /* ------------------------------------------------------------------ верхня смуга, тривога, тикер */
@@ -34517,7 +34828,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     const sp = $("ctSc"); sp.firstChild.textContent = Math.round(G.st.ua.pts); sp.lastChild.textContent = Math.round(G.st.ru.pts);
     const prg = $("ctPrg"); prg.style.width = isFinite(G.end) && G.end > G.start ? clamp((c - G.start) / (G.end - G.start) * 100, 0, 100) + "%" : "0%";
     const pb = document.querySelector('#gbBtns [data-s7="gmpause"]'), pp = $("ctPause"), paused = a.SIM.paused;
-    pp.disabled = !pb; pp.innerHTML = ico(paused ? IC.play : IC.pause); pp.title = (paused ? "Продовжити" : "Пауза") + " (Пробіл)";
+    pp.disabled = !pb; pp.innerHTML = ico(paused ? IC.play : IC.pause); pp.classList.toggle("paused", !!paused); pp.title = (paused ? "Продовжити" : "Пауза") + " (Пробіл)";
     const rb = document.querySelector('#gbBtns [data-s7="gmready"]'), rd = $("ctReady"); rd.style.display = rb && pre ? "" : "none";
     const my = document.querySelector("#gbMoney"), mn = $("ctMny"), tx = my ? my.textContent.replace(/\s+/g, " ").trim() : "";
     mn.style.display = tx && my.offsetParent !== undefined && tx.length < 40 ? "" : "none"; if (tx) mn.firstChild.textContent = tx;
@@ -34564,6 +34875,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     EV.on("toast", d => {
       const m = d.msg, cat = /знищено об'єкт|знищ/i.test(m) && !/збит/i.test(m) ? "obj" : /тривог/i.test(m) ? "alert" : "info";
       logAdd(m, cat, d.kind === "alert" ? "alert" : d.kind === "warn" ? "warn" : d.kind === "ok" ? "ok" : "info");
+      if (d.kind === "alert" || d.kind === "warn") say(m, d.kind);
     });
     EV.on("offline", () => logAdd("Картографічний сервер недоступний — працює офлайн-підкладка з вбудованих геоданих", "info", "warn"));
   }
@@ -34574,7 +34886,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
   function selectAd(id, go) { const a = A(), u = a.ADS.units.get(+id); if (!u) return; C.sel = { type: "ad", id: "a" + u.id, rid: u.id }; if (go && window.BV_QUICK && sides().includes(u.side || "ua")) window.BV_QUICK.focus(u.id); else if (go) fly(u.pos, 7); C.sig = ""; renderInsp(); renderDrawer(true); }
   function selectObj(i, go) { const a = A(), o = a.OBJS[+i]; if (!o) return; C.sel = { type: "obj", id: "o" + o.i, rid: o.i }; if (go) fly(o.c, 7); C.sig = ""; renderInsp(); renderDrawer(true); }
   function cycleThreat(dir) {
-    const rows = threatRows(); if (!rows.length) return A().toast("Немає виявлених цілей", "warn");
+    const rows = threatRows(); if (!rows.length) return say("Немає виявлених цілей", "warn");
     let i = C.sel && C.sel.type === "thr" ? rows.findIndex(r => r.id === C.sel.id) : -1; i = (i + dir + rows.length) % rows.length; selectThreat(rows[i].id, true);
   }
   function overview() { const m = A().map; if (m) m.easeTo({ center: [32.2, 49.6], zoom: window.innerWidth < 700 ? 4.3 : 5.2, duration: 900 }); }
@@ -34583,16 +34895,22 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
   function palItems(q) {
     const a = A(), out = []; q = q.trim().toLowerCase();
     const m = (s) => !q || s.toLowerCase().includes(q);
-    const acts = [["Обстановка", "1", () => openTab("threat")], ["Техніка", "2", () => openTab("assets")], ["Об'єкти", "3", () => openTab("objs")], ["Журнал", "4", () => openTab("log")], ["Шари мапи", "5", () => openTab("layers")], ["Загальний вид", "Home", overview], ["Гарячі клавіші", "?", () => toggleKeys(true)]];
-    for (const [n, k, f] of acts) if (m(n)) out.push({ n, s: "команда", k, f });
-    for (const t of C.thr) if (m(t.name + " " + t.cs + " " + t.from + " " + t.target)) out.push({ n: t.name + " · " + t.cs, s: "ціль" + (t.eta != null ? " · " + fmtT(t.eta) : ""), f: () => { selectThreat(t.id, true); } });
-    for (const u of ownAssets()) { const T = a.AD_TYPES[u.key]; if (T && m(T.n + " " + (u.post || ""))) out.push({ n: T.n + (u.post ? " · " + u.post : ""), s: "техніка", f: () => { openTab("assets"); selectAd(u.id, true); } }); }
-    if (q.length > 1) for (const o of a.OBJS) { if (out.length > 40) break; if (m(o.n)) out.push({ n: o.n, s: OBJ_N[o.t] || "об'єкт", f: () => { selectObj(o.i, true); } }); }
+    const acts = [["Обстановка", "1", () => openTab("threat"), IC.threat], ["Техніка", "2", () => openTab("assets"), IC.assets], ["Об'єкти", "3", () => openTab("objs"), IC.objs], ["Журнал", "4", () => openTab("log"), IC.log], ["Шари мапи", "5", () => openTab("layers"), IC.layers], ["Загальний вид", "Home", overview, IC.map], ["Гарячі клавіші", "?", () => toggleKeys(true), IC.help]];
+    for (const [n, k, f, ic] of acts) if (m(n)) out.push({ n, s: "", k, f, g: "Команди", ic });
+    for (const t of C.thr) if (m(t.name + " " + t.cs + " " + t.from + " " + t.target)) out.push({ n: t.name + " · " + t.cs, s: t.eta != null ? fmtT(t.eta) : "", f: () => { selectThreat(t.id, true); }, g: "Цілі", ic: IC.threat });
+    for (const u of ownAssets()) { const T = a.AD_TYPES[u.key]; if (T && m(T.n + " " + (u.post || ""))) out.push({ n: T.n + (u.post ? " · " + u.post : ""), s: "", f: () => { openTab("assets"); selectAd(u.id, true); }, g: "Техніка", ic: IC.assets }); }
+    if (q.length > 1) for (const o of a.OBJS) { if (out.length > 40) break; if (m(o.n)) out.push({ n: o.n, s: OBJ_N[o.t] || "об'єкт", f: () => { selectObj(o.i, true); }, g: "Об'єкти", ic: OBJ_IC[o.t] || IC.gen }); }
     return out.slice(0, 40);
   }
   let palSel = 0, palList = [];
-  function palRender() { palList = palItems($("cpIn").value); palSel = clamp(palSel, 0, Math.max(0, palList.length - 1)); $("cpR").innerHTML = palList.length ? palList.map((r, i) => `<div class="it ${i === palSel ? "sel" : ""}" data-pi="${i}">${esc(r.n)}<small>${esc(r.s)}</small>${r.k ? `<kbd>${r.k}</kbd>` : ""}</div>`).join("") : `<div class="k-empty">Нічого не знайдено</div>`; }
-  function togglePal(on) { const p = $("cmdPal"); on = on == null ? !p.classList.contains("on") : on; p.classList.toggle("on", on); if (!on) $("cpIn").blur(); if (on) { $("cpIn").value = ""; palSel = 0; palRender(); setTimeout(() => $("cpIn").focus(), 20); } }
+  function palRender() {
+    palList = palItems($("kpIn").value); palSel = clamp(palSel, 0, Math.max(0, palList.length - 1));
+    let h = "", g = null;
+    palList.forEach((r, i) => { if (r.g !== g) { g = r.g; h += `<div class="gh">${g}</div>`; } h += `<div class="it ${i === palSel ? "sel" : ""}" data-pi="${i}">${ico(r.ic || IC.gen)}<span class="nn">${esc(r.n)}</span>${r.s ? `<small>${esc(r.s)}</small>` : ""}${r.k ? `<kbd>${r.k}</kbd>` : ""}</div>`; });
+    $("kpR").innerHTML = h || `<div class="k-empty">Нічого не знайдено</div>`;
+    const sel = $("kpR").querySelector(".it.sel"); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+  }
+  function togglePal(on) { const p = $("cmdPal"); on = on == null ? !p.classList.contains("on") : on; p.classList.toggle("on", on); if (!on) $("kpIn").blur(); if (on) { $("kpIn").value = ""; palSel = 0; palRender(); setTimeout(() => $("kpIn").focus(), 20); } }
   function toggleKeys(on) { const p = $("cmdKeys"); on = on == null ? !p.classList.contains("on") : on; p.classList.toggle("on", on); }
 
   /* ------------------------------------------------------------------ події інтерфейсу */
@@ -34607,15 +34925,18 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
       if (act === "insx") return setSel(null);
       if (act === "mini") { C.mini = false; lsSet("cmd.mini", "0"); applyMini(); return; }
       if (act === "locate") { const t2 = C.thr.find(x => x.id === C.sel.id); if (t2) fly(t2.pos, 7.5); return; }
-      if (act === "follow") { const s = C.sel; if (s && s.type === "thr" && window.BV_FOLLOW && typeof s.id === "number") window.BV_FOLLOW.start(s.id); else A().toast("Супровід доступний для цілей, що йдуть у вашому полі зору", "warn"); return; }
+      if (act === "follow") { const s = C.sel; if (s && s.type === "thr" && window.BV_FOLLOW && typeof s.id === "number") window.BV_FOLLOW.start(s.id); else say("Супровід доступний для цілей, що йдуть у вашому полі зору", "warn"); return; }
       if (act === "ad-focus") { const s = C.sel; if (s) { if (window.BV_QUICK && window.BV_QUICK.focus(s.rid)) return; const u = A().ADS.units.get(s.rid); if (u) fly(u.pos, 7.5); } return; }
       if (act && act.startsWith("ad-") && C.sel && C.sel.type === "ad" && window.BV_QUICK) {
         const id = C.sel.rid, u = A().ADS.units.get(id); if (!u) return; const Q = window.BV_QUICK;
         const ok = act === "ad-reload" ? Q.order(id, "reload") : act === "ad-mode" ? Q.order(id, "mode", u.mode === "manual" ? "auto" : "manual") : act === "ad-repair" ? Q.order(id, "repair") : act === "ad-rtb" ? Q.order(id, "rtb") : act === "ad-remove" ? Q.order(id, "remove") : false;
-        if (act === "ad-remove" && ok) setSel(null); if (!ok) A().toast("Команду зараз виконати неможливо", "warn"); C.sig = ""; renderInsp(); return;
+        if (act === "ad-remove" && ok) setSel(null); if (!ok) say("Команду зараз виконати неможливо", "warn"); C.sig = ""; renderInsp(); return;
       }
+      if (act === "keysx") return toggleKeys(false);
+      if (act === "obj-copy") { const o = A().OBJS[C.sel.rid]; if (o) { const txt = o.c[1].toFixed(5) + ", " + o.c[0].toFixed(5); (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => say("Координати скопійовано: " + txt, "ok"), () => say("Не вдалося скопіювати координати", "warn")); } return; }
+      const pre = t.closest("[data-pre]"); if (pre) { const P = PRESETS[pre.dataset.pre]; for (const k of OV_KEYS) { OV[k] = !!P[k]; lsSet("cmd." + k, OV[k] ? "1" : "0"); } C.sig = ""; renderLayers(); say("Пресет: " + pre.textContent.trim(), "info"); return; }
       if (act === "obj-focus") { const o = A().OBJS[C.sel.rid]; if (o) fly(o.c, 7.5); return; }
-      if (act === "logcopy") { const txt = C.log.map(e => e.t + "  " + e.x + (e.n > 1 ? " ×" + e.n : "")).join("\n"); (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => A().toast("Журнал скопійовано", "ok"), () => A().toast("Не вдалося скопіювати", "warn")); return; }
+      if (act === "logcopy") { const txt = C.log.map(e => e.t + "  " + e.x + (e.n > 1 ? " ×" + e.n : "")).join("\n"); (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => say("Журнал скопійовано", "ok"), () => say("Не вдалося скопіювати", "warn")); return; }
       if (act === "logsave") { const txt = C.log.map(e => e.t + "  " + e.x + (e.n > 1 ? " ×" + e.n : "")).join("\n"), l = document.createElement("a"); l.href = URL.createObjectURL(new Blob([txt], { type: "text/plain;charset=utf-8" })); l.download = "skydominion-log.txt"; l.click(); setTimeout(() => URL.revokeObjectURL(l.href), 2000); return; }
       if (act === "logclr") { C.log = []; C.logNew = 0; C.sig = ""; renderDrawer(true); renderTicker(); return; }
       const thf = t.closest("[data-thf]"); if (thf) { C.thrFilter = thf.dataset.thf; C.sig = ""; return renderDrawer(true); }
@@ -34640,7 +34961,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
       if (t.closest("[data-mfs]")) { toggleMenu(false); try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); } catch (er) { /* */ } return; }
     });
     root.addEventListener("input", e => {
-      if (e.target.id === "cdQ") { C.objQ = e.target.value; C.sig = ""; renderObjs(true); } else if (e.target.id === "cdLQ") { C.logQ = e.target.value; C.sig = ""; renderLog(true); } else if (e.target.id === "cpIn") { palSel = 0; palRender(); }
+      if (e.target.id === "cdQ") { C.objQ = e.target.value; C.sig = ""; renderObjs(true); } else if (e.target.id === "cdLQ") { C.logQ = e.target.value; C.sig = ""; renderLog(true); } else if (e.target.id === "kpIn") { palSel = 0; palRender(); }
     });
     root.addEventListener("change", e => {
       const t = e.target, ov = t.dataset && t.dataset.ov;
@@ -34649,7 +34970,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     });
     root.addEventListener("mouseover", e => { const r = e.target.closest("[data-thr]"); C.hover = r ? r.dataset.thr : null; });
     root.addEventListener("mouseleave", () => { C.hover = null; });
-    $("cpIn").addEventListener("keydown", e => {
+    $("kpIn").addEventListener("keydown", e => {
       if (e.key === "ArrowDown") { palSel = Math.min(palSel + 1, palList.length - 1); palRender(); e.preventDefault(); } else if (e.key === "ArrowUp") { palSel = Math.max(0, palSel - 1); palRender(); e.preventDefault(); }
       else if (e.key === "Enter") { const r = palList[palSel]; togglePal(false); r && r.f(); } else if (e.key === "Escape") togglePal(false);
       e.stopPropagation();
@@ -34679,13 +35000,24 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     const lk = k.toLowerCase(), pre = () => { e.preventDefault(); e.stopPropagation(); };
     if (k === " ") { if (proxyClick('#gbBtns [data-s7="gmpause"]')) pre(); } else if (k === "1") { pre(); openTab("threat"); } else if (k === "2") { pre(); openTab("assets"); } else if (k === "3") { pre(); openTab("objs"); } else if (k === "4") { pre(); openTab("log"); } else if (k === "5") { pre(); openTab("layers"); }
     else if (k === "/" ) { pre(); togglePal(true); } else if (k === "?") { pre(); toggleKeys(); } else if (k === "]") { pre(); cycleThreat(1); } else if (k === "[") { pre(); cycleThreat(-1); }
-    else if (lk === "n") { pre(); const r = threatRows()[0]; r ? selectThreat(r.id, true) : A().toast("Немає виявлених цілей", "warn"); }
-    else if (lk === "f") { pre(); if (C.sel && C.sel.type === "thr" && typeof C.sel.id === "number" && window.BV_FOLLOW) window.BV_FOLLOW.start(C.sel.id); else A().toast("Оберіть ціль у списку обстановки", "warn"); }
+    else if (lk === "n") { pre(); const r = threatRows()[0]; r ? selectThreat(r.id, true) : say("Немає виявлених цілей", "warn"); }
+    else if (lk === "f") { pre(); if (C.sel && C.sel.type === "thr" && typeof C.sel.id === "number" && window.BV_FOLLOW) window.BV_FOLLOW.start(C.sel.id); else say("Оберіть ціль у списку обстановки", "warn"); }
     else if (k === "Home") { pre(); overview(); }
     else if (lk === "g") { pre(); tgl("grid"); } else if (lk === "z") { pre(); tgl("cover"); } else if (lk === "r") { pre(); tgl("detect"); } else if (lk === "v") { pre(); tgl("vec"); } else if (lk === "t") { pre(); tgl("trail"); }
     else if (lk === "m") { pre(); C.mini = !C.mini; lsSet("cmd.mini", C.mini ? "1" : "0"); applyMini(); }
+    else if (lk === "b") { pre(); tgl("lbl"); }
+    else if (lk === "c") { pre(); const p = selPos(); if (p) fly(p, 7.5); else say("Спершу оберіть ціль, техніку або об'єкт", "warn"); }
+    else if (k === "+" || k === "=") { pre(); const m = A().map; if (m) m.easeTo({ zoom: m.getZoom() + 1, duration: 260 }); }
+    else if (k === "-" || k === "_" || k === "−") { pre(); const m = A().map; if (m) m.easeTo({ zoom: m.getZoom() - 1, duration: 260 }); }
   }
-  function tgl(k) { OV[k] = !OV[k]; lsSet("cmd." + k, OV[k] ? "1" : "0"); C.sig = ""; if (C.tab === "layers") renderLayers(); A().toast((OV[k] ? "Увімкнено: " : "Вимкнено: ") + ({ grid: "сітка координат", cover: "зони прикриття ППО", detect: "виявлення РЛС", vec: "вектори загроз", trail: "сліди руху", lbl: "підписи" })[k], "info"); }
+  function selPos() {
+    const s = C.sel, a = A(); if (!s) return null;
+    if (s.type === "thr") { const t = C.thr.find(x => x.id === s.id); return t ? t.pos : null; }
+    if (s.type === "ad") { const u = a.ADS.units.get(s.rid); return u ? u.pos : null; }
+    if (s.type === "obj") { const o = a.OBJS[s.rid]; return o ? o.c : null; }
+    return null;
+  }
+  function tgl(k) { OV[k] = !OV[k]; lsSet("cmd." + k, OV[k] ? "1" : "0"); C.sig = ""; if (C.tab === "layers") renderLayers(); say((OV[k] ? "Увімкнено: " : "Вимкнено: ") + ({ grid: "сітка координат", cover: "зони прикриття ППО", detect: "виявлення РЛС", vec: "вектори загроз", trail: "сліди руху", lbl: "підписи цілей" })[k], "info"); }
 
   /* наведення / клацання по цілях на мапі */
   function nearestHit(x, y, r) { let best = null, bd = r * r; for (const h of C.hit) { const d = (h.x - x) * (h.x - x) + (h.y - y) * (h.y - y); if (d < bd) { bd = d; best = h; } } return best; }
@@ -34706,14 +35038,14 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
   /* ------------------------------------------------------------------ оверлей карти (canvas) */
   let ovc = null, g = null, W = 0, H = 0, dpr = 1;
   function sizeOv() { ovc = $("cmdOv"); dpr = Math.min(window.devicePixelRatio || 1, 2); W = window.innerWidth; H = window.innerHeight; ovc.width = Math.round(W * dpr); ovc.height = Math.round(H * dpr); ovc.style.width = W + "px"; ovc.style.height = H + "px"; g = ovc.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); }
-  const SIDE_COL = { ua: [61, 155, 255], ru: [255, 77, 63] };
+  const SIDE_COL = { ua: [77, 163, 255], ru: [255, 91, 77] };
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   function kmToPx(map, c, km) { const p0 = map.project(c), p1 = map.project([c[0] + km / (111.32 * Math.cos(c[1] * D2R)), c[1]]); return Math.abs(p1.x - p0.x); }
 
   function drawGrid(map) {
     const z = map.getZoom(), step = z < 4.2 ? 10 : z < 5.6 ? 5 : z < 7.2 ? 2 : z < 9 ? 1 : 0.5;
     const b = map.getBounds(), w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-    g.save(); g.lineWidth = 1; g.strokeStyle = "rgba(140,180,255,.11)"; g.fillStyle = "rgba(160,190,235,.55)"; g.font = "600 10px ui-monospace,Menlo,monospace";
+    g.save(); g.lineWidth = 1; g.strokeStyle = "rgba(160,186,224,.07)"; g.fillStyle = "rgba(160,190,235,.42)"; g.font = "600 10px ui-monospace,Menlo,monospace";
     g.beginPath();
     for (let lo = Math.ceil(w / step) * step; lo <= e; lo += step) { const a = map.project([lo, n]), c = map.project([lo, s]); g.moveTo(Math.round(a.x) + .5, 0); g.lineTo(Math.round(c.x) + .5, H); }
     for (let la = Math.ceil(s / step) * step; la <= n; la += step) { const a = map.project([w, la]); g.moveTo(0, Math.round(a.y) + .5); g.lineTo(W, Math.round(a.y) + .5); }
@@ -34765,10 +35097,10 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
       if (OV.vec && th.hdg != null && th.spd > 0) { const L = clamp(th.spd / 20, 14, 44), h = th.hdg * D2R; g.strokeStyle = rgba(col, .95); g.lineWidth = 1.5; g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + Math.sin(h) * L, p.y - Math.cos(h) * L); g.stroke(); }
       // кільце загрози
       if (th.eta != null && th.eta < 30 && !th.carrier) { const k = (t / 500) % 1; g.strokeStyle = `rgba(255,77,63,${.7 * (1 - k)})`; g.lineWidth = 1.5; g.beginPath(); g.arc(p.x, p.y, 10 + k * 14, 0, 7); g.stroke(); }
-      if (hot) { g.strokeStyle = "#ffc83d"; g.lineWidth = 1.6; const r = 13; g.beginPath(); for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.moveTo(p.x + dx * r, p.y + dy * (r - 5)); g.lineTo(p.x + dx * r, p.y + dy * r); g.lineTo(p.x + dx * (r - 5), p.y + dy * r); } g.stroke(); }
+      if (hot) { g.strokeStyle = "#f2b53c"; g.lineWidth = 1.6; const r = 13; g.beginPath(); for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { g.moveTo(p.x + dx * r, p.y + dy * (r - 5)); g.lineTo(p.x + dx * r, p.y + dy * r); g.lineTo(p.x + dx * (r - 5), p.y + dy * r); } g.stroke(); }
       // підпис
       const cellK = Math.round(p.x / 70) + "," + Math.round(p.y / 22);
-      if (OV.lbl && (z >= 5.6 || hot) && (hot || !g._lb.has(cellK))) { g._lb.add(cellK); const txt = th.cs + (th.eta != null ? " " + fmtT(th.eta) : ""), w = g.measureText(txt).width + 10; g.fillStyle = "rgba(4,8,15,.78)"; g.fillRect(p.x + 12, p.y - 24, w, 15); g.strokeStyle = rgba(col, .6); g.lineWidth = 1; g.strokeRect(p.x + 12.5, p.y - 23.5, w, 15); g.fillStyle = hot ? "#ffe08a" : "#e8f0ff"; g.fillText(txt, p.x + 17, p.y - 16.5); }
+      if (OV.lbl && (z >= 5.6 || hot) && (hot || !g._lb.has(cellK))) { g._lb.add(cellK); const txt = th.cs + (th.eta != null ? " " + fmtT(th.eta) : ""), w = g.measureText(txt).width + 10; g.fillStyle = "rgba(4,8,15,.78)"; g.fillRect(p.x + 12, p.y - 24, w, 15); g.strokeStyle = rgba(col, .6); g.lineWidth = 1; g.strokeRect(p.x + 12.5, p.y - 23.5, w, 15); g.fillStyle = hot ? "#ffd98a" : "#e8f0ff"; g.fillText(txt, p.x + 17, p.y - 16.5); }
     }
     g.restore();
   }
@@ -34792,7 +35124,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
   }
   function drawSelRing(map, t) {
     const s = C.sel; if (!s || s.type === "thr") return; let c = null; if (s.type === "ad") { const u = A().ADS.units.get(s.rid); c = u && u.pos; } else if (s.type === "obj") { const o = A().OBJS[s.rid]; c = o && o.c; } if (!c) return;
-    const p = map.project(c), k = (t / 900) % 1; g.save(); g.strokeStyle = "#ffc83d"; g.lineWidth = 1.6; g.beginPath(); g.arc(p.x, p.y, 16, 0, 7); g.stroke(); g.globalAlpha = 1 - k; g.beginPath(); g.arc(p.x, p.y, 16 + k * 14, 0, 7); g.stroke(); g.restore();
+    const p = map.project(c), k = (t / 900) % 1; g.save(); g.strokeStyle = "#f2b53c"; g.lineWidth = 1.6; g.beginPath(); g.arc(p.x, p.y, 16, 0, 7); g.stroke(); g.globalAlpha = 1 - k; g.beginPath(); g.arc(p.x, p.y, 16 + k * 14, 0, 7); g.stroke(); g.restore();
   }
   let lastDraw = 0;
   function frame(t) {
@@ -34833,7 +35165,7 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
     for (const th of C.thr) { const q = mxy(th.pos), col = th.side === "ua" ? "#5fb0ff" : th.side === "ru" ? "#ff4d3f" : "#ffbe3c"; m.fillStyle = col; m.beginPath(); m.arc(q[0], q[1], th.carrier ? 2.4 : 1.8, 0, 7); m.fill(); if (th.eta != null && th.eta < 30) { m.strokeStyle = "rgba(255,77,63,.7)"; m.beginPath(); m.arc(q[0], q[1], 3 + (t / 120) % 4, 0, 7); m.stroke(); } }
     for (const f of C.flashes) { const q = mxy(f.pos); m.strokeStyle = f.kind === "kill" ? "#35dc96" : "#ff4d3f"; m.beginPath(); m.arc(q[0], q[1], 2 + ((performance.now() - f.t0) / 140) % 6, 0, 7); m.stroke(); }
     // видима область
-    const map = a.map; if (map) { const b = map.getBounds(), p0 = mxy([b.getWest(), b.getNorth()]), p1 = mxy([b.getEast(), b.getSouth()]); m.strokeStyle = "#ffc83d"; m.lineWidth = 1.2; m.strokeRect(Math.max(.5, p0[0]), Math.max(.5, p0[1]), Math.min(mw - 1, p1[0]) - Math.max(.5, p0[0]), Math.min(mh - 1, p1[1]) - Math.max(.5, p0[1])); }
+    const map = a.map; if (map) { const b = map.getBounds(), p0 = mxy([b.getWest(), b.getNorth()]), p1 = mxy([b.getEast(), b.getSouth()]); m.strokeStyle = "#f2b53c"; m.lineWidth = 1.2; m.strokeRect(Math.max(.5, p0[0]), Math.max(.5, p0[1]), Math.min(mw - 1, p1[0]) - Math.max(.5, p0[0]), Math.min(mh - 1, p1[1]) - Math.max(.5, p0[1])); }
   }
   function miniWire() {
     const cv = $("cmdMiniC"); let drag = false;
@@ -34844,10 +35176,13 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
 
   /* ------------------------------------------------------------------ головний цикл */
   let tickN = 0;
+  function syncTips() {
+    document.querySelectorAll("#controls .btn").forEach(b => { const t = b.getAttribute("aria-label") || b._tip || ""; if (t) { b.dataset.tip = t; if (b.title) { b._tip = b.title; b.removeAttribute("title"); } } else if (b.title) { b._tip = b.title; b.dataset.tip = b.title; b.removeAttribute("title"); } });
+  }
   function tick() {
     if (!body.classList.contains("s7-game")) return; const a = A(); if (!a || !a.GAME.on) return;
     C.thr = collectThreats(); C.thr.forEach(t => { if (t.fog) t.cs = t.cs; });
-    renderTop(); renderAlert(); renderTicker(); updBadges();
+    syncTips(); renderTop(); renderAlert(); renderTicker(); updBadges();
     if (C.tab && (tickN % 2 === 0 || C.tab === "threat")) renderDrawer(false);
     if (C.sel) { if (C.sel.type === "thr" && !C.thr.some(t => t.id === C.sel.id)) { setSel(null); } else if (tickN % 2 === 0) renderInsp(); }
     tickN++;
@@ -34863,6 +35198,609 @@ html body.s7-game :is(#selbar,#pickbar,#followBar){background:var(--k-g2)!import
   }
   window.BV_CMD = { state: C, overlays: OV, openTab, log: logAdd, select: setSel, version: "1.0" };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+})();
+</script>
+<script id="bv-arms-js">/* SKYDOMINION · 73 · МІЖНАРОДНІ ПОСТАВКИ ОЗБРОЄННЯ + ЦЕНТРАЛЬНИЙ СКЛАД (Львів)
+   Партнери (США, Британія, Німеччина, Франція, Польща, Румунія) формують ПАРТІЇ за переліками озброєння. Партія проходить статуси
+   «Формується → Очікує транспорт → Завантаження → У дорозі → Розвантаження → Прийнято на склад» (або «Прийнято частково» / «Втрачено» / «Скасовано»).
+   Легкі позиції (ракети, бомби, ПЗРК) везе Ан-26 — ігровий об'єкт на мапі (рейс вузол партнера → Львів, борт можна втратити від влучання поблизу);
+   важка техніка ППО йде наземним коридором. Вантаж надходить на ЦЕНТРАЛЬНИЙ СКЛАД у Львові, звідки гравець передає його у війська (арсенал/ППО гри).
+   ОБЛІК: кожна зміна кількості — проводка в журналі операцій (LEDGER) з унікальним ключем ідемпотентності: повторно та сама проводка не виконується
+   (немає дублювання), а кожна одиниця завжди в одному стані: ЧЕРГА → У ДОРОЗІ → СКЛАД → ВІЙСЬКА, або ВТРАЧЕНО/ПОВЕРНЕНО.
+   BV_ARMS.audit() перевіряє баланси (партія ↔ рейси ↔ склад ↔ журнал). Конфіг: window.BV_ARMS_CFG. Лише для гравця за Україну, не в мережевому бою. */
+(function boot() {
+  "use strict";
+  if (window.BV_ARMS) return;
+  const H = window.BV_DND_HOST, G = window.BV_GAME;
+  const S7 = H && H.S7, map = S7 && S7.map;
+  if (!H || !G || !S7 || !map || !document.getElementById("controls")) return setTimeout(boot, 400);
+
+  const CFG = Object.assign({
+    FLEET: 3, PAYLOAD_KG: 5500, AIR_MAX_UNIT_KG: 2000, CRUISE_KMM: 7.33, LOAD_MIN: 25, UNLOAD_MIN: 18, WH_MOVE_MIN: 8,
+    FORM_BASE: 40, FORM_PER_LINE: 6, GROUND_WAIT: 90, GROUND_KMM: 1.0, ROAD_K: 1.3, WH_CAP_KG: 160000,
+    HIT_AIR_KM: 3, HIT_GROUND_KM: 1.5, WH_HIT_KM: 2.5, WH_HIT_LOSS: 0.15, REPLACE_MIN: 36 * 60,
+    MIN_REL: 15, MAX_ACTIVE: 12, AUTO: true, AUTO_H: 24, LOG_MAX: 1500
+  }, window.BV_ARMS_CFG || {});
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const toast = m => { try { H.toast(m); } catch (e) { /* */ } };
+  const dkm = (a, b) => { const kx = 111.32 * Math.cos((a[1] + b[1]) / 2 * Math.PI / 180); return Math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * 110.574); };
+  const brg = (a, b) => { const kx = Math.cos((a[1] + b[1]) / 2 * Math.PI / 180); return (Math.atan2((b[0] - a[0]) * kx, b[1] - a[1]) * 180 / Math.PI + 360) % 360; };
+  const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  const now = () => +G.clock || 0;
+  const DX = () => (window.BV_DIP && window.BV_DIP.ext) || null;
+  const fmtT = t => { const m = Math.floor(t) % 1440, d = Math.floor(t / 1440); return `${d ? "д" + (d + 1) + " " : ""}${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; };
+  const fmtKg = kg => kg >= 1000 ? (kg / 1000).toFixed(kg >= 10000 ? 0 : 1).replace(".0", "") + " т" : Math.round(kg) + " кг";
+
+  /* ---------- вузли ---------- */
+  const NODES = {
+    RZE: { id: "RZE", n: "Жешув-Ясьонка (PL)", c: [22.019, 50.110] },
+    SUJ: { id: "SUJ", n: "Сучава (RO)", c: [26.354, 47.688] },
+    LWO: { id: "LWO", n: "Львів · Данило Галицький", c: [23.956, 49.8125] }
+  };
+  const WH_C = [23.979, 49.796];
+
+  /* ---------- довідник озброєння: kind w — арсенал (GAME.stock), ad — склад ППО (GAME.ads); kg — маса одиниці ---------- */
+  const ITEMS = {
+    atacms: { n: "ATACMS", cat: "Ракети", kind: "w", kg: 1670 }, jassm: { n: "JASSM", cat: "Ракети", kind: "w", kg: 1020 },
+    tomahawk: { n: "Tomahawk", cat: "Ракети", kind: "w", kg: 1450 }, harpoon: { n: "Harpoon", cat: "Ракети", kind: "w", kg: 690 },
+    stormshadow: { n: "Storm Shadow / SCALP", cat: "Ракети", kind: "w", kg: 1300 }, taurus: { n: "Taurus KEPD 350", cat: "Ракети", kind: "w", kg: 1400 },
+    jdamer: { n: "JDAM-ER", cat: "Авіабомби", kind: "w", kg: 280 }, gbu39: { n: "GBU-39 SDB", cat: "Авіабомби", kind: "w", kg: 130 }, aasm: { n: "AASM Hammer", cat: "Авіабомби", kind: "w", kg: 340 },
+    stinger: { n: "Stinger (ПЗРК)", cat: "ППО ближня", kind: "ad", kg: 40 }, igla: { n: "Ігла (ПЗРК)", cat: "ППО ближня", kind: "ad", kg: 30 }, zu23: { n: "ЗУ-23-2", cat: "ППО ближня", kind: "ad", kg: 950 },
+    gepard: { n: "Gepard", cat: "ППО", kind: "ad", kg: 47000 }, skynex: { n: "Skynex", cat: "ППО", kind: "ad", kg: 20000 }, iris: { n: "IRIS-T SLM", cat: "ППО", kind: "ad", kg: 15000 },
+    nasams: { n: "NASAMS", cat: "ППО", kind: "ad", kg: 12000 }, patriot: { n: "Patriot", cat: "ППО", kind: "ad", kg: 30000 }, sampt: { n: "SAMP/T", cat: "ППО", kind: "ad", kg: 25000 },
+    osa: { n: "Оса", cat: "ППО", kind: "ad", kg: 18000 }, s125: { n: "С-125 «Печора»", cat: "ППО", kind: "ad", kg: 12000 }, stormer: { n: "Stormer HVM", cat: "ППО", kind: "ad", kg: 12700 },
+    vampire: { n: "VAMPIRE", cat: "ППО", kind: "ad", kg: 9000 }
+  };
+  const KEYS = Object.keys(ITEMS);
+  const isAir = k => ITEMS[k].kg <= CFG.AIR_MAX_UNIT_KG;
+  const L = (k, max, avail, regen) => ({ k, max, avail, regen });
+  const PARTNERS = {
+    us: { hub: "RZE", lines: [L("atacms", 4, 12, 1), L("jassm", 4, 10, 1), L("tomahawk", 2, 4, .5), L("harpoon", 4, 8, 1), L("jdamer", 12, 40, 4), L("gbu39", 16, 60, 6), L("stinger", 8, 30, 3), L("patriot", 1, 3, .25), L("nasams", 1, 4, .5)],
+      presets: [["Високоточні боєприпаси", { atacms: 2, jdamer: 8, gbu39: 8 }], ["Пакет ППО", { patriot: 1, stinger: 6 }]] },
+    gb: { hub: "RZE", lines: [L("stormshadow", 4, 12, 1), L("stormer", 1, 3, .5), L("vampire", 1, 3, .5)], presets: [["Крилаті ракети", { stormshadow: 3 }], ["Мобільна ППО", { stormer: 1, vampire: 1 }]] },
+    de: { hub: "RZE", lines: [L("iris", 1, 6, .5), L("gepard", 2, 10, 1), L("skynex", 1, 4, .5), L("taurus", 3, 8, .5), L("patriot", 1, 2, .25)], presets: [["Пакет IRIS-T", { iris: 1, gepard: 2 }], ["Taurus", { taurus: 3 }]] },
+    fr: { hub: "RZE", lines: [L("sampt", 1, 2, .2), L("aasm", 8, 24, 2), L("stormshadow", 3, 6, .5)], presets: [["AASM Hammer", { aasm: 8 }], ["SAMP/T", { sampt: 1 }]] },
+    pl: { hub: "RZE", lines: [L("zu23", 4, 20, 2), L("igla", 8, 40, 4), L("osa", 1, 4, .5), L("s125", 1, 2, .25)], presets: [["Ближня ППО", { zu23: 4, igla: 8 }]] },
+    ro: { hub: "SUJ", lines: [L("zu23", 4, 16, 2), L("igla", 6, 24, 2), L("patriot", 1, 1, .1)], presets: [["Ближня ППО", { zu23: 4, igla: 6 }]] }
+  };
+  const PIDS = Object.keys(PARTNERS);
+  const PN = { us: ["США", "🇺🇸"], gb: ["Велика Британія", "🇬🇧"], de: ["Німеччина", "🇩🇪"], fr: ["Франція", "🇫🇷"], pl: ["Польща", "🇵🇱"], ro: ["Румунія", "🇷🇴"] };
+
+  const STAT = { forming: ["Формується", "mu"], ready: ["Очікує транспорт", "mu"], loading: ["Завантаження", "wn"], enroute: ["У дорозі", "bl"], arrived: ["Розвантаження у Львові", "bl"],
+    received: ["Прийнято на склад", "ok"], partial: ["Прийнято частково", "wn"], lost: ["Втрачено", "bd"], cancelled: ["Скасовано", "mu"] };
+  const KIND = { receipt: ["Надходження", "ok"], release: ["Списання · передано у війська", "wn"], strike: ["Списання · знищено ударом", "bd"], loss: ["Втрата в дорозі", "bd"], refund: ["Повернення партнеру", "mu"], reserve: ["Резерв партнера", "mu"] };
+
+  /* ---------- стан ---------- */
+  let ST;
+  function fresh() {
+    ST = { gid: (ST ? ST.gid : 0) + 1, ships: [], legs: [], ac: [], inv: {}, led: [], posted: new Set(), tot: { rcv: {}, rel: {}, str: {}, loss: {}, ref: {} },
+      avail: {}, nextAuto: {}, seq: 1, lseq: 1, oseq: 1, auto: CFG.AUTO, tab: "wh", partner: "us", draft: {}, openShip: null, lastT: now(), flt: "all", audit: null, unread: 0 };
+    for (const p of PIDS) { ST.avail[p] = {}; for (const l of PARTNERS[p].lines) ST.avail[p][l.k] = l.avail; ST.nextAuto[p] = now() + 480 + Math.random() * 720; }
+    for (let i = 0; i < CFG.FLEET; i++) ST.ac.push({ id: i + 1, name: "Ан-26 №" + (i + 1), at: "LWO", ph: null, plan: [], st: "parked", leg: null, pos: null, hdg: 90, load: 0, respawn: 0 });
+  }
+  fresh();
+  const active = () => !!(G.on && !G.puppet && G.ctx !== "online" && G.ctrl && G.ctrl.ua === "me");
+  const infinite = () => !!(G.unlimited || !G.stock || !G.stock.ua);
+  const sum = (o, k) => (o[k] | 0);
+  const add = (o, k, n) => { o[k] = (o[k] | 0) + n; };
+
+  /* ---------- ЖУРНАЛ ОПЕРАЦІЙ (єдина точка зміни залишків складу) ---------- */
+  function post(opKey, kind, key, qty, ref, note) {
+    if (!(qty > 0)) return false;
+    if (ST.posted.has(opKey)) return false;                       // ідемпотентність: та сама проводка двічі не виконується
+    const inv = ST.inv, cur = inv[key] | 0;
+    const dec = kind === "release" || kind === "strike";
+    if (dec && qty > cur) return false;                           // списати більше, ніж є, неможливо — залишок не йде в мінус
+    if (kind === "receipt") { inv[key] = cur + qty; add(ST.tot.rcv, key, qty); }
+    else if (kind === "release") { inv[key] = cur - qty; add(ST.tot.rel, key, qty); }
+    else if (kind === "strike") { inv[key] = cur - qty; add(ST.tot.str, key, qty); }
+    else if (kind === "loss") add(ST.tot.loss, key, qty);         // втрата в дорозі: склад не змінюється, лише облік
+    else if (kind === "refund") add(ST.tot.ref, key, qty);
+    ST.posted.add(opKey);
+    ST.led.push({ id: ST.oseq++, t: now(), kind, key, qty, bal: inv[key] | 0, ref: ref || "", note: note || "" });
+    if (ST.led.length > CFG.LOG_MAX) ST.led.splice(0, ST.led.length - CFG.LOG_MAX);
+    ST.dirty = true;
+    return true;
+  }
+  const whUsed = () => KEYS.reduce((s, k) => s + (ST.inv[k] | 0) * ITEMS[k].kg, 0);
+  const whFree = () => Math.max(0, CFG.WH_CAP_KG - whUsed());
+  const linesKg = lines => lines.reduce((s, l) => s + l.n * ITEMS[l.k].kg, 0);
+
+  /* ---------- партії ---------- */
+  const pad = n => String(n).padStart(4, "0");
+  const shipLine = (s, k) => s.lines.find(l => l.k === k);
+  const legsOf = s => s.legs.map(id => ST.legs.find(l => l.id === id)).filter(Boolean);
+  const NOT_DEPARTED = new Set(["queued", "loading"]);
+  const IN_TRANSIT = new Set(["flying", "unloading", "transfer", "wait", "moving"]);
+
+  function packLegs(lines) {
+    const air = [], ground = [];
+    let cur = { lines: [], kg: 0 };
+    const sorted = lines.filter(l => l.q > 0).sort((a, b) => ITEMS[b.k].kg - ITEMS[a.k].kg);
+    for (const l of sorted) {
+      const u = ITEMS[l.k].kg;
+      if (!isAir(l.k)) { ground.push({ k: l.k, n: l.q }); continue; }
+      let left = l.q;
+      while (left > 0) {
+        const fit = Math.floor((CFG.PAYLOAD_KG - cur.kg) / u);
+        if (fit <= 0) { air.push(cur); cur = { lines: [], kg: 0 }; continue; }
+        const n = Math.min(left, fit), ex = cur.lines.find(x => x.k === l.k);
+        if (ex) ex.n += n; else cur.lines.push({ k: l.k, n });
+        cur.kg += n * u; left -= n;
+      }
+    }
+    if (cur.kg > 0) air.push(cur);
+    return { air, ground };
+  }
+
+  function createShip(p, want, auto) {
+    const P = PARTNERS[p], lines = [];
+    for (const k in want) { const q = want[k] | 0; if (q > 0) lines.push({ k, q, tr: 0, recv: 0, lost: 0, ref: 0 }); }
+    if (!lines.length) return null;
+    for (const l of lines) ST.avail[p][l.k] -= l.q;                // резерв у партнера — рівно одна проводка на партію
+    const t = now(), pk = packLegs(lines), hub = NODES[P.hub];
+    const s = { id: ST.seq++, p, hub: P.hub, lines, t0: t, tForm: t + CFG.FORM_BASE + CFG.FORM_PER_LINE * lines.length, legs: [], status: "forming", auto: !!auto, cancelled: false, rewarded: false };
+    s.code = "ПП-" + pad(s.id);
+    const mk = (mode, ls, extra) => { const l = Object.assign({ id: ST.lseq++, ship: s.id, mode, hub: P.hub, lines: ls, kg: linesKg(ls), state: "queued", ac: null, readyAt: s.tForm, t0: 0, t1: 0 }, extra || {}); ST.legs.push(l); s.legs.push(l.id); return l; };
+    for (const x of pk.air) mk("air", x.lines);
+    if (pk.ground.length) mk("ground", pk.ground, { dist: dkm(hub.c, NODES.LWO.c) * CFG.ROAD_K });
+    ST.ships.push(s);
+    for (const l of lines) post("rsv:" + s.id + ":" + l.k, "reserve", l.k, l.q, s.code, PN[p][0]);
+    ST.dirty = true;
+    return s;
+  }
+
+  function validate(p, want) {
+    if (!active()) return "Поставки доступні лише в бою за Україну (не в мережевому бою)";
+    if (!PARTNERS[p]) return "Невідомий партнер";
+    const dx = DX(); const rel = dx && dx.ok() ? dx.rel(p, "ua") : 50;
+    if (rel < CFG.MIN_REL) return `${PN[p][0]} відмовляє: відносини ${Math.round(rel)} (потрібно ≥ ${CFG.MIN_REL})`;
+    if (ST.ships.filter(s => !isFinal(s)).length >= CFG.MAX_ACTIVE) return "Забагато активних партій";
+    let n = 0;
+    for (const k in want) {
+      const q = want[k] | 0; if (q <= 0) continue;
+      const ln = PARTNERS[p].lines.find(l => l.k === k); if (!ln) return "Партнер не постачає " + k;
+      if (q > ln.max) return `${ITEMS[k].n}: не більше ${ln.max} за партію`;
+      if (q > Math.floor(ST.avail[p][k] + 1e-9)) return `${ITEMS[k].n}: у партнера доступно лише ${Math.floor(ST.avail[p][k])}`;
+      n += q;
+    }
+    return n ? "" : "Партія порожня — оберіть позиції";
+  }
+  function request(p, want) {
+    const err = validate(p, want); if (err) { toast(err); return { ok: false, msg: err }; }
+    const s = createShip(p, want, false);
+    toast(`Партія ${s.code} від ${PN[p][0]} формується · ${s.lines.length} поз.`);
+    log2("📦", `Партія ${s.code} (${PN[p][0]}) сформована: ` + s.lines.map(l => `${ITEMS[l.k].n} ×${l.q}`).join(", "));
+    return { ok: true, id: s.id };
+  }
+  function cancel(id) {
+    const s = ST.ships.find(x => x.id === id); if (!s || s.cancelled) return false;
+    const ls = legsOf(s);
+    if (!ls.every(l => l.state === "queued" && !l.ac)) { toast("Партію вже відправлено — скасувати не можна"); return false; }
+    for (const l of ls) l.state = "cancelled";
+    for (const x of s.lines) { const n = x.q - x.tr - x.recv - x.lost - x.ref; if (n > 0) { ST.avail[s.p][x.k] += n; x.ref += n; post("ref:" + s.id + ":" + x.k, "refund", x.k, n, s.code, "скасовано"); } }
+    s.cancelled = true; ST.dirty = true; return true;
+  }
+  const isFinal = s => s.cancelled || ["received", "partial", "lost"].includes(s.status);
+
+  function statusOf(s) {
+    if (s.cancelled) return "cancelled";
+    const ls = legsOf(s);
+    if (ls.length && ls.every(l => l.state === "done" || l.state === "lost")) {
+      const rec = s.lines.reduce((a, l) => a + l.recv, 0), lost = s.lines.reduce((a, l) => a + l.lost, 0);
+      return rec === 0 ? "lost" : lost > 0 ? "partial" : "received";
+    }
+    if (now() < s.tForm) return "forming";
+    if (ls.some(l => l.state === "flying" || l.state === "moving")) return "enroute";
+    if (ls.some(l => l.state === "unloading" || l.state === "transfer" || l.state === "wait")) return "arrived";
+    if (ls.some(l => l.state === "loading")) return "loading";
+    return "ready";
+  }
+
+  /* ---------- Ан-26 ---------- */
+  const acPos = (a, t) => {
+    const ph = a.ph;
+    if (ph && (ph.k === "fly" || ph.k === "ferry")) { const f = clamp((t - ph.t0) / Math.max(1e-6, ph.t1 - ph.t0), 0, 1); return lerp(ph.from, ph.to, f); }
+    const c = NODES[a.at].c, i = a.id - 1; return [c[0] + 0.004 * (i % 3) - 0.004, c[1] - 0.003 * (i % 3)];
+  };
+  function assign(a, leg, t) {
+    const hub = NODES[leg.hub], lwo = NODES.LWO, plan = [];
+    let tt = t;
+    if (a.at !== leg.hub) { const d = dkm(NODES[a.at].c, hub.c) / CFG.CRUISE_KMM; plan.push({ k: "ferry", from: NODES[a.at].c, to: hub.c, t0: tt, t1: tt + d }); tt += d; }
+    plan.push({ k: "load", from: hub.c, to: hub.c, t0: tt, t1: tt + CFG.LOAD_MIN, leg: leg.id }); tt += CFG.LOAD_MIN;
+    const fd = dkm(hub.c, lwo.c) / CFG.CRUISE_KMM;
+    plan.push({ k: "fly", from: hub.c, to: lwo.c, t0: tt, t1: tt + fd, leg: leg.id }); tt += fd;
+    plan.push({ k: "unload", from: lwo.c, to: lwo.c, t0: tt, t1: tt + CFG.UNLOAD_MIN, leg: leg.id });
+    a.plan = plan; a.leg = leg.id; leg.ac = a.id; leg.state = "queued"; a.st = "busy"; a.ph = a.plan.shift();
+    if (a.ph.k === "load") beginPhase(a);
+  }
+  function beginPhase(a) {
+    const ph = a.ph, leg = ph.leg && ST.legs.find(l => l.id === ph.leg);
+    if (ph.k === "load" && leg) { leg.state = "loading"; a.st = "loading"; }
+    if (ph.k === "ferry") a.st = "ferry";
+  }
+  function finishPhase(a) {
+    const ph = a.ph, leg = ph.leg && ST.legs.find(l => l.id === ph.leg), s = leg && ST.ships.find(x => x.id === leg.ship);
+    if (ph.k === "ferry") a.at = ph.to === NODES.LWO.c ? "LWO" : a.at;
+    if (ph.k === "ferry") a.at = Object.keys(NODES).find(k => NODES[k].c === ph.to) || a.at;
+    if (ph.k === "load" && leg && s) {                                  // вантаж на борту: ЧЕРГА → У ДОРОЗІ (рівно один раз)
+      if (leg.state === "loading") { leg.state = "flying"; a.load = leg.kg; for (const l of leg.lines) shipLine(s, l.k).tr += l.n; a.st = "flying"; }
+    }
+    if (ph.k === "fly") { a.at = "LWO"; if (leg) leg.state = "unloading"; a.st = "unloading"; }
+    if (ph.k === "unload" && leg) { leg.state = "transfer"; leg.t1 = ph.t1 + CFG.WH_MOVE_MIN; a.load = 0; a.st = "parked"; a.leg = null; }
+    a.ph = a.plan.shift() || null;
+    if (a.ph) { if (a.ph.k === "fly") a.st = "flying"; beginPhase(a); }
+    else { a.ph = null; if (a.st !== "lost") a.st = "parked"; a.leg = null; }
+  }
+  function loseLeg(leg, why) {
+    if (leg.state === "done" || leg.state === "lost") return;
+    const s = ST.ships.find(x => x.id === leg.ship);
+    for (const l of leg.lines) {
+      const sl = shipLine(s, l.k), inTr = IN_TRANSIT.has(leg.state) || leg.state === "flying";
+      if (inTr) sl.tr -= l.n; else { /* ще не вилетіло — частина вантажу в черзі */ }
+      sl.lost += l.n; post("loss:" + leg.id + ":" + l.k, "loss", l.k, l.n, s.code, why);
+    }
+    leg.state = "lost"; ST.dirty = true;
+  }
+  function destroyAc(a, why) {
+    if (a.st === "lost") return;
+    const leg = a.leg && ST.legs.find(l => l.id === a.leg);
+    if (leg) {
+      if (leg.state === "flying") loseLeg(leg, why);
+      else { leg.state = "queued"; leg.ac = null; }                 // вантаж не вантажили/ще на землі у партнера — рейс повертається в чергу
+    }
+    a.st = "lost"; a.ph = null; a.plan = []; a.leg = null; a.load = 0; a.respawn = now() + CFG.REPLACE_MIN;
+    toast(`${a.name} втрачено: ${why}` + (leg && leg.lines.length ? ` · вантаж ${fmtKg(leg.kg)}` : ""));
+    log2("✈", `${a.name} втрачено (${why})`);
+  }
+
+  /* ---------- склад: прийом, передача у війська, удар ---------- */
+  function receiveLeg(leg) {
+    if (leg.state === "done" || leg.state === "lost") return;
+    if (leg.kg > whFree()) { leg.state = "wait"; return; }          // немає місця — вантаж чекає, нічого не списано й не зараховано
+    const s = ST.ships.find(x => x.id === leg.ship);
+    for (const l of leg.lines) {
+      const sl = shipLine(s, l.k);
+      if (post("rcv:" + leg.id + ":" + l.k, "receipt", l.k, l.n, s.code, PN[s.p][0])) { sl.tr -= l.n; sl.recv += l.n; }
+    }
+    leg.state = "done";
+  }
+  function release(key, n) {
+    if (!active()) return { ok: false, msg: "Недоступно" };
+    if (infinite()) return { ok: false, msg: "Режим без обмежень: арсенал нескінченний — передача не потрібна" };
+    const have = ST.inv[key] | 0; n = Math.min(n | 0, have);
+    if (n <= 0) return { ok: false, msg: "На складі немає цієї позиції" };
+    const box = ITEMS[key].kind === "w" ? G.stock.ua : G.ads && G.ads.ua;
+    if (!box) return { ok: false, msg: "Арсенал недоступний" };
+    const opKey = "rel:" + ST.oseq + ":" + key;
+    if (!post(opKey, "release", key, n, "війська", ITEMS[key].kind === "w" ? "арсенал" : "склад ППО")) return { ok: false, msg: "Операція відхилена" };
+    box[key] = (box[key] | 0) + n;                                  // склад → війська: списання та зарахування — одна пара дій
+    try { S7.stockChanged && S7.stockChanged(); H.HOOKS.lpRefresh && H.HOOKS.lpRefresh(); H.HOOKS.apRefresh && H.HOOKS.apRefresh(); } catch (e) { /* */ }
+    toast(`Передано у війська: ${ITEMS[key].n} ×${n}`);
+    return { ok: true, n };
+  }
+  function releaseAll() { let c = 0; for (const k of KEYS) if ((ST.inv[k] | 0) > 0) { const r = release(k, ST.inv[k]); if (r.ok) c += r.n; else if (r.msg.startsWith("Режим")) { toast(r.msg); return 0; } } return c; }
+  function strikeWh() {
+    let any = 0;
+    for (const k of KEYS) { const have = ST.inv[k] | 0; if (!have) continue; const n = Math.min(have, Math.floor(have * CFG.WH_HIT_LOSS + Math.random())); if (n > 0 && post("str:" + ST.oseq + ":" + k, "strike", k, n, "склад", "влучання")) any += n; }
+    if (any) { toast(`Удар по центральному складу у Львові: знищено ${any} од.`); log2("💥", `Склад у Львові уражено: втрачено ${any} од.`); }
+  }
+  function onHit(p, k) {
+    if (!active() || !Array.isArray(p) || p.length < 2 || (k !== "ground" && k !== "crash" && k !== "kill")) return;
+    const t = now();
+    let near = null, nd = 1e9;                                    // у повітрі збивається лише ближчий борт; на землі — усі в радіусі
+    for (const a of ST.ac) {
+      if (a.st === "lost") continue;
+      const flying = !!(a.ph && (a.ph.k === "fly" || a.ph.k === "ferry")), d = dkm(acPos(a, t), p);
+      if (flying) { if (d <= CFG.HIT_AIR_KM && d < nd) { near = a; nd = d; } }
+      else if (d <= CFG.HIT_GROUND_KM) destroyAc(a, "знищено на аеродромі");
+    }
+    if (near) destroyAc(near, "збито в польоті");
+    if (k !== "kill" && dkm(WH_C, p) <= CFG.WH_HIT_KM) strikeWh();
+  }
+
+  /* ---------- журнал подій (короткий) ---------- */
+  const EVLOG = [];
+  function log2(ic, tx) { EVLOG.push({ t: now(), ic, tx }); if (EVLOG.length > 200) EVLOG.shift(); ST.dirty = true; }
+
+  /* ---------- перевірка обліку ---------- */
+  function audit() {
+    const bad = [];
+    for (const k of KEYS) {
+      const exp = sum(ST.tot.rcv, k) - sum(ST.tot.rel, k) - sum(ST.tot.str, k);
+      if ((ST.inv[k] | 0) !== exp) bad.push(`${ITEMS[k].n}: склад ${(ST.inv[k] | 0)} ≠ приходи−витрати ${exp}`);
+      if ((ST.inv[k] | 0) < 0) bad.push(`${ITEMS[k].n}: від'ємний залишок`);
+    }
+    let ledSum = {}; // журнал обмежений довжиною, тому звіряємо лише якщо він не обрізаний
+    const trunc = ST.oseq - 1 > ST.led.length;
+    if (!trunc) for (const o of ST.led) { const d = o.kind === "receipt" ? o.qty : (o.kind === "release" || o.kind === "strike") ? -o.qty : 0; ledSum[o.key] = (ledSum[o.key] | 0) + d; }
+    if (!trunc) for (const k of KEYS) if ((ledSum[k] | 0) !== (ST.inv[k] | 0)) bad.push(`${ITEMS[k].n}: журнал ${(ledSum[k] | 0)} ≠ склад ${(ST.inv[k] | 0)}`);
+    for (const s of ST.ships) {
+      const ls = legsOf(s);
+      for (const l of s.lines) {
+        const queued = l.q - l.tr - l.recv - l.lost - l.ref;
+        const inL = (states) => ls.filter(x => states.has(x.state)).reduce((a, x) => a + (x.lines.find(y => y.k === l.k) || { n: 0 }).n, 0);
+        if (queued < 0 || l.tr < 0 || l.recv < 0 || l.lost < 0) bad.push(`${s.code} ${ITEMS[l.k].n}: від'ємна кількість`);
+        if (queued !== inL(NOT_DEPARTED)) bad.push(`${s.code} ${ITEMS[l.k].n}: в черзі ${queued} ≠ у рейсах ${inL(NOT_DEPARTED)}`);
+        if (l.tr !== inL(IN_TRANSIT)) bad.push(`${s.code} ${ITEMS[l.k].n}: у дорозі ${l.tr} ≠ у рейсах ${inL(IN_TRANSIT)}`);
+      }
+    }
+    const rcvShips = ST.ships.reduce((a, s) => { for (const l of s.lines) add(a, l.k, l.recv); return a; }, {});
+    for (const k of KEYS) if (sum(rcvShips, k) !== sum(ST.tot.rcv, k)) bad.push(`${ITEMS[k].n}: отримано в партіях ${sum(rcvShips, k)} ≠ проводки ${sum(ST.tot.rcv, k)}`);
+    ST.audit = { t: now(), bad };
+    return bad;
+  }
+
+  /* ---------- крок ---------- */
+  function autoAid(t) {
+    if (!ST.auto || !active()) return;
+    const dx = DX();
+    for (const p of PIDS) {
+      if (t < ST.nextAuto[p]) continue;
+      const rel = dx && dx.ok() ? dx.rel(p, "ua") : 50;
+      ST.nextAuto[p] = t + CFG.AUTO_H * 60 * (1.6 - clamp(rel, 0, 100) / 100) * (0.8 + Math.random() * 0.8);
+      if (rel < 25 || Math.random() > 0.3 + rel / 200 || ST.ships.filter(s => !isFinal(s)).length >= CFG.MAX_ACTIVE) continue;
+      const pool = PARTNERS[p].lines.filter(l => Math.floor(ST.avail[p][l.k]) >= 1), want = {};
+      for (let i = 0, n = 1 + Math.floor(Math.random() * 2); i < n && pool.length; i++) { const l = pool.splice(Math.floor(Math.random() * pool.length), 1)[0]; want[l.k] = Math.max(1, Math.min(Math.floor(ST.avail[p][l.k]), Math.round(l.max * (0.3 + Math.random() * 0.7)))); }
+      if (!Object.keys(want).length) continue;
+      const s = createShip(p, want, true);
+      if (s) { toast(`${PN[p][1]} ${PN[p][0]} оголосила пакет допомоги ${s.code}`); log2("🎁", `${PN[p][0]} відправляє партію ${s.code}: ` + s.lines.map(l => `${ITEMS[l.k].n} ×${l.q}`).join(", ")); }
+    }
+  }
+  function step() {
+    if (!G.on) { feat(true); return; }
+    if (ST.gstart !== G.start || ST.gon !== true) { /* початок нового бою обробляє onGameStart */ }
+    const t = now(), dt = clamp(t - ST.lastT, 0, 1440); ST.lastT = t;
+    if (dt > 0) for (const p of PIDS) for (const l of PARTNERS[p].lines) ST.avail[p][l.k] = Math.min(l.avail, ST.avail[p][l.k] + l.regen * dt / 1440);
+    if (active()) autoAid(t);
+    /* наземні рейси */
+    for (const leg of ST.legs) {
+      const s = ST.ships.find(x => x.id === leg.ship);
+      if (leg.mode === "ground") {
+        if (leg.state === "queued" && t >= leg.readyAt) { leg.state = "loading"; leg.t0 = leg.readyAt + CFG.GROUND_WAIT; }
+        if (leg.state === "loading" && t >= leg.t0) { leg.state = "moving"; leg.t1 = leg.t0 + leg.dist / CFG.GROUND_KMM; for (const l of leg.lines) shipLine(s, l.k).tr += l.n; }
+        if (leg.state === "moving" && t >= leg.t1) { leg.state = "transfer"; leg.t1 += CFG.WH_MOVE_MIN; }
+      }
+      if ((leg.state === "transfer" && t >= leg.t1) || leg.state === "wait") receiveLeg(leg);
+    }
+    /* повітряні рейси: диспетчер */
+    for (const a of ST.ac) {
+      if (a.st === "lost" && a.respawn && t >= a.respawn) { a.st = "parked"; a.at = "LWO"; a.respawn = 0; toast(a.name + ": замінний борт прибув від партнерів"); }
+      let guard = 8; while (a.ph && t >= a.ph.t1 && guard--) finishPhase(a);
+    }
+    for (const leg of ST.legs) {
+      if (leg.mode !== "air" || leg.state !== "queued" || leg.ac || t < leg.readyAt) continue;
+      const free = ST.ac.filter(a => a.st === "parked" && !a.ph);
+      if (!free.length) break;
+      free.sort((x, y) => dkm(NODES[x.at].c, NODES[leg.hub].c) - dkm(NODES[y.at].c, NODES[leg.hub].c));
+      assign(free[0], leg, t);
+    }
+    for (const a of ST.ac) { a.pos = acPos(a, t); if (a.ph && (a.ph.k === "fly" || a.ph.k === "ferry")) a.hdg = brg(a.ph.from, a.ph.to); else if (a.st === "parked") a.hdg = 90; }
+    /* статуси партій і події */
+    for (const s of ST.ships) {
+      const ns = statusOf(s);
+      if (ns !== s.status) {
+        const old = s.status; s.status = ns; ST.dirty = true;
+        if (ns === "enroute" && old !== "enroute") toast(`Партія ${s.code} (${PN[s.p][0]}) у дорозі до Львова`);
+        if (ns === "received" || ns === "partial" || ns === "lost") {
+          const rc = s.lines.reduce((a, l) => a + l.recv, 0), ls = s.lines.reduce((a, l) => a + l.lost, 0);
+          toast(ns === "lost" ? `Партія ${s.code} втрачена повністю` : `Партія ${s.code} прийнята на склад у Львові: ${rc} од.` + (ls ? `, втрачено ${ls}` : ""));
+          log2(ns === "lost" ? "✖" : "✔", `${s.code}: ${STAT[ns][0].toLowerCase()} — прийнято ${rc}, втрачено ${ls}`);
+          if (rc > 0 && !s.rewarded) { s.rewarded = true; const dx = DX(); try { if (dx && dx.ok()) dx.addR(s.p, "ua", 1); } catch (e) { /* */ } }
+        }
+      }
+    }
+    feat(); renderPanel();
+  }
+
+  /* ---------- карта ---------- */
+  const SRC = "arms-src";
+  const zi = (...a) => ["interpolate", ["linear"], ["zoom"], ...a];
+  function sprite(draw, w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h); return c.getContext("2d").getImageData(0, 0, w, h); }
+  function drawAn26(g, w, h, col, op) {
+    g.translate(w / 2, h / 2); g.globalAlpha = op || 1; g.fillStyle = col; g.strokeStyle = "rgba(4,10,24,.95)"; g.lineWidth = 2.2; g.lineJoin = "round";
+    const P = (pts) => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.stroke(); };
+    P([[0, -34], [4, -26], [5, -6], [5, 18], [3.5, 33], [0, 36], [-3.5, 33], [-5, 18], [-5, -6], [-4, -26]]);                 // фюзеляж (ніс вгору)
+    P([[-5, -4], [-40, 0], [-40, 7], [-5, 11]]); P([[5, -4], [40, 0], [40, 7], [5, 11]]);                                       // прямі верхні крила
+    P([[-4, 27], [-17, 31], [-17, 35], [-3, 34]]); P([[4, 27], [17, 31], [17, 35], [3, 34]]);                                   // стабілізатор
+    P([[-3, 28], [-1, 24], [1, 24], [3, 28], [1, 38], [-1, 38]]);                                                               // кіль/рампа
+    for (const x of [-16, 16]) { g.beginPath(); g.ellipse(x, 2, 3.6, 8, 0, 0, 7); g.fill(); g.stroke(); g.beginPath(); g.moveTo(x - 8, -8); g.lineTo(x + 8, -8); g.lineWidth = 2; g.stroke(); g.lineWidth = 2.2; } // гондоли + гвинти
+  }
+  function drawWh(g, w, h) {
+    g.translate(w / 2, h / 2); g.fillStyle = "rgba(255,197,61,.18)"; g.strokeStyle = "#ffc53d"; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, 28, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = "#ffc53d"; g.beginPath(); g.moveTo(-17, -4); g.lineTo(0, -17); g.lineTo(17, -4); g.lineTo(17, 15); g.lineTo(-17, 15); g.closePath(); g.fill();
+    g.fillStyle = "#0a1226"; g.fillRect(-9, 2, 18, 13); g.fillStyle = "#ffc53d"; for (const y of [5, 9, 13]) g.fillRect(-9, y, 18, 1.5);
+  }
+  function drawNode(g, w, h) { g.translate(w / 2, h / 2); g.strokeStyle = "#7fb4ff"; g.fillStyle = "rgba(47,140,255,.25)"; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, 14, 0, 7); g.fill(); g.stroke(); g.beginPath(); g.moveTo(0, -9); g.lineTo(0, 9); g.moveTo(-9, 0); g.lineTo(9, 0); g.stroke(); }
+  let mapOK = false;
+  function ensureMap() {
+    if (mapOK) return true;
+    try {
+      if (!map.isStyleLoaded || !map.isStyleLoaded()) return false;
+      if (!map.hasImage("arms-an26")) { map.addImage("arms-an26", sprite((g, w, h) => drawAn26(g, w, h, "#4cc3ff"), 96, 96), { pixelRatio: 2 }); map.addImage("arms-an26-p", sprite((g, w, h) => drawAn26(g, w, h, "#4cc3ff", .55), 96, 96), { pixelRatio: 2 }); map.addImage("arms-an26-x", sprite((g, w, h) => drawAn26(g, w, h, "#ff7a6b", .8), 96, 96), { pixelRatio: 2 }); }
+      if (!map.hasImage("arms-wh")) map.addImage("arms-wh", sprite(drawWh, 72, 72), { pixelRatio: 2 });
+      if (!map.hasImage("arms-node")) map.addImage("arms-node", sprite(drawNode, 48, 48), { pixelRatio: 2 });
+      if (!map.getSource(SRC)) map.addSource(SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      if (!map.getLayer("arms-rt")) map.addLayer({ id: "arms-rt", type: "line", source: SRC, filter: ["==", ["get", "k"], "rt"], paint: { "line-color": "#4cc3ff", "line-width": 1.6, "line-opacity": 0.6, "line-dasharray": [2, 2] } });
+      if (!map.getLayer("arms-node")) map.addLayer({ id: "arms-node", type: "symbol", source: SRC, filter: ["==", ["get", "k"], "node"], layout: { "icon-image": "arms-node", "icon-size": zi(4, 0.4, 8, 0.6, 12, 0.9), "icon-allow-overlap": true, "text-field": ["step", ["zoom"], "", 6, ["get", "lb"]], "text-font": ["Noto Sans Bold"], "text-size": 10, "text-anchor": "top", "text-offset": [0, 1.2], "text-optional": true }, paint: { "text-color": "#9ec8ff", "text-halo-color": "rgba(0,0,0,.9)", "text-halo-width": 1.3 } });
+      if (!map.getLayer("arms-wh")) map.addLayer({ id: "arms-wh", type: "symbol", source: SRC, filter: ["==", ["get", "k"], "wh"], layout: { "icon-image": "arms-wh", "icon-size": zi(4, 0.5, 8, 0.75, 12, 1.1), "icon-allow-overlap": true, "text-field": ["step", ["zoom"], "", 6.5, ["get", "lb"]], "text-font": ["Noto Sans Bold"], "text-size": 10, "text-anchor": "top", "text-offset": [0, 1.6], "text-optional": true }, paint: { "text-color": "#ffc53d", "text-halo-color": "rgba(0,0,0,.9)", "text-halo-width": 1.4 } });
+      if (!map.getLayer("arms-ac")) map.addLayer({ id: "arms-ac", type: "symbol", source: SRC, filter: ["==", ["get", "k"], "ac"], layout: { "icon-image": ["get", "img"], "icon-size": zi(4, 0.45, 8, 0.7, 12, 1.0), "icon-rotate": ["get", "rot"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true, "text-field": ["step", ["zoom"], "", 6, ["get", "lb"]], "text-font": ["Noto Sans Bold"], "text-size": 10, "text-anchor": "top", "text-offset": [0, 1.6], "text-optional": true }, paint: { "text-color": "#8fe0ff", "text-halo-color": "rgba(0,0,0,.9)", "text-halo-width": 1.3 } });
+      for (const id of ["arms-ac", "arms-wh"]) { map.on("click", id, () => { openPanel(id === "arms-wh" ? "wh" : "ac"); }); map.on("mouseenter", id, () => { map.getCanvas().style.cursor = "pointer"; }); map.on("mouseleave", id, () => { map.getCanvas().style.cursor = ""; }); }
+      mapOK = true;
+    } catch (e) { return false; }
+    return true;
+  }
+  let lastSig = "";
+  function feat(clear) {
+    if (!ensureMap()) return;
+    const F = [];
+    if (!clear && active()) {
+      for (const n of Object.values(NODES)) F.push({ type: "Feature", properties: { k: "node", lb: n.n }, geometry: { type: "Point", coordinates: n.c } });
+      F.push({ type: "Feature", properties: { k: "wh", lb: `Центральний склад · Львів · ${fmtKg(whUsed())}` }, geometry: { type: "Point", coordinates: WH_C } });
+      const rts = new Set(); for (const l of ST.legs) if (l.mode === "air" && !["done", "lost", "cancelled"].includes(l.state)) rts.add(l.hub);
+      for (const h of rts) F.push({ type: "Feature", properties: { k: "rt" }, geometry: { type: "LineString", coordinates: [NODES[h].c, NODES.LWO.c] } });
+      for (const a of ST.ac) if (a.st !== "lost" && a.pos) F.push({ type: "Feature", properties: { k: "ac", img: a.ph && (a.ph.k === "fly" || a.ph.k === "ferry") ? "arms-an26" : "arms-an26-p", rot: a.hdg, lb: a.name + (a.load ? " · " + fmtKg(a.load) : "") }, geometry: { type: "Point", coordinates: a.pos } });
+    }
+    const sig = JSON.stringify(F);
+    if (sig === lastSig) return; lastSig = sig;
+    try { map.getSource(SRC).setData({ type: "FeatureCollection", features: F }); } catch (e) { /* */ }
+  }
+
+  /* ---------- інтерфейс ---------- */
+  let panel = null, btn = null;
+  function mount() {
+    if (btn) return;
+    const c = $("controls"); if (!c) return;
+    btn = document.createElement("button"); btn.id = "armsZb"; btn.type = "button"; btn.className = "btn"; btn.title = "Міжнародні поставки озброєння · склад у Львові"; btn.setAttribute("aria-label", "Поставки озброєння");
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-5 9 5v11H3z"/><path d="M8 20v-6h8v6M8 14h8M12 9v.01"/></svg>';
+    btn.addEventListener("click", e => { e.stopPropagation(); panel.hidden ? openPanel() : (panel.hidden = true); });
+    c.appendChild(btn);
+    panel = document.createElement("div"); panel.id = "armsPanel"; panel.hidden = true; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-label", "Поставки озброєння"); document.body.appendChild(panel);
+    panel.addEventListener("click", onClick); panel.addEventListener("change", onChange);
+  }
+  function openPanel(tab) { if (tab) ST.tab = tab; panel.hidden = false; ST.sig = ""; renderPanel(true); }
+  const chip = (txt, c) => `<span class="ar-chip ${c || ""}">${esc(txt)}</span>`;
+  const bar = (v, mx, c) => `<i class="ar-bar ${c || ""}"><b style="width:${Math.round(clamp(mx ? v / mx : 0, 0, 1) * 100)}%"></b></i>`;
+  function tabsHtml() {
+    const T = [["wh", "Склад"], ["ships", "Партії"], ["new", "Сформувати"], ["ac", "Ан-26"], ["ops", "Операції"]];
+    const act = ST.ships.filter(s => !isFinal(s)).length;
+    return `<div class="ar-tabs">` + T.map(([k, n]) => `<button data-a="tab" data-v="${k}" class="${ST.tab === k ? "on" : ""}">${n}${k === "ships" && act ? `<em>${act}</em>` : ""}</button>`).join("") + `</div>`;
+  }
+  function tabWh() {
+    const used = whUsed(), inf = infinite();
+    let h = `<div class="ar-sum"><div><span>Склад заповнено</span><b>${fmtKg(used)} / ${fmtKg(CFG.WH_CAP_KG)}</b>${bar(used, CFG.WH_CAP_KG, used > CFG.WH_CAP_KG * .9 ? "bd" : "")}</div></div>`;
+    h += `<div class="ar-act"><button data-a="relall" ${used ? "" : "disabled"}>Передати все у війська</button><button data-a="audit">Перевірка обліку</button></div>`;
+    if (inf) h += `<div class="ar-note">Режим без обмежень: арсенал нескінченний, передача у війська вимкнена.</div>`;
+    if (ST.audit) h += `<div class="ar-note ${ST.audit.bad.length ? "bd" : "ok"}">${ST.audit.bad.length ? "Знайдено розбіжності: " + esc(ST.audit.bad.join(" · ")) : "Облік сходиться: склад ↔ партії ↔ журнал ✔ (" + fmtT(ST.audit.t) + ")"}</div>`;
+    h += `<table class="ar-tb"><thead><tr><th>Позиція</th><th title="Фізично на складі = доступно до видачі">На складі</th><th title="Партії ще не вилетіли">Очікується</th><th title="Вантаж у польоті / на колоні">У дорозі</th><th>Передано</th><th>Втрачено</th><th></th></tr></thead><tbody>`;
+    let rows = 0;
+    for (const k of KEYS) {
+      const onh = ST.inv[k] | 0, rel = sum(ST.tot.rel, k), lostT = sum(ST.tot.loss, k) + sum(ST.tot.str, k);
+      let q = 0, tr = 0; for (const s of ST.ships) { const l = shipLine(s, k); if (l && !s.cancelled) { q += l.q - l.tr - l.recv - l.lost - l.ref; tr += l.tr; } }
+      if (!(onh || rel || lostT || q || tr)) continue; rows++;
+      h += `<tr><td><b>${esc(ITEMS[k].n)}</b><small>${ITEMS[k].cat} · ${fmtKg(ITEMS[k].kg)}/од.</small></td><td class="n">${onh}</td><td class="n">${q || "·"}</td><td class="n">${tr || "·"}</td><td class="n">${rel || "·"}</td><td class="n ${lostT ? "bd" : ""}">${lostT || "·"}</td><td><button class="ar-sm" data-a="rel" data-v="${k}" ${onh && !inf ? "" : "disabled"}>У війська</button></td></tr>`;
+    }
+    if (!rows) h += `<tr><td colspan="7" class="ar-empty">Склад порожній. Сформуйте партію у вкладці «Сформувати» — або дочекайтеся пакета допомоги від партнерів.</td></tr>`;
+    h += `</tbody></table>`;
+    h += `<label class="ar-chk"><input type="checkbox" data-a="auto" ${ST.auto ? "checked" : ""}> Партнери надсилають пакети допомоги самі</label>`;
+    return h;
+  }
+  function shipHtml(s) {
+    const [tx, c] = STAT[s.status] || STAT.ready, ls = legsOf(s), done = ls.filter(l => l.state === "done" || l.state === "lost").length;
+    const open = ST.openShip === s.id, kg = linesKg(s.lines.map(l => ({ k: l.k, n: l.q })));
+    let h = `<div class="ar-ship"><div class="ar-sh" data-a="open" data-v="${s.id}"><b>${s.code}</b><span>${PN[s.p][1]} ${esc(PN[s.p][0])}${s.auto ? " · допомога" : ""}</span>${chip(tx, c)}</div>`;
+    h += `<div class="ar-sm2">${s.lines.map(l => `${esc(ITEMS[l.k].n)} ×${l.q}`).join(" · ")} · ${fmtKg(kg)} · рейсів ${done}/${ls.length}</div>`;
+    if (s.status === "forming") h += bar(now() - s.t0, s.tForm - s.t0);
+    if (open) {
+      h += `<table class="ar-tb sm"><thead><tr><th>Позиція</th><th>Замовл.</th><th>Черга</th><th>В дорозі</th><th>Прийнято</th><th>Втрачено</th></tr></thead><tbody>` +
+        s.lines.map(l => { const q = l.q - l.tr - l.recv - l.lost - l.ref; return `<tr><td>${esc(ITEMS[l.k].n)}</td><td class="n">${l.q}</td><td class="n">${q}</td><td class="n">${l.tr}</td><td class="n ok">${l.recv}</td><td class="n ${l.lost ? "bd" : ""}">${l.lost}</td></tr>`; }).join("") + `</tbody></table>`;
+      h += `<div class="ar-sm2">Транспорт: ${ls.map(l => l.mode === "air" ? "Ан-26" : "наземний коридор").filter((x, i, a) => a.indexOf(x) === i).join(" + ")} · створено ${fmtT(s.t0)}</div>`;
+    }
+    if (!isFinal(s) && legsOf(s).every(l => l.state === "queued" && !l.ac)) h += `<button class="ar-sm bd" data-a="cancel" data-v="${s.id}">Скасувати партію</button>`;
+    return h + `</div>`;
+  }
+  function tabShips() { return ST.ships.length ? ST.ships.slice().reverse().map(shipHtml).join("") : `<div class="ar-empty">Партій ще немає.</div>`; }
+  function tabNew() {
+    const p = ST.partner, P = PARTNERS[p], dx = DX(), rel = dx && dx.ok() ? Math.round(dx.rel(p, "ua")) : null;
+    let h = `<div class="ar-flt">` + PIDS.map(x => `<button data-a="partner" data-v="${x}" class="${x === p ? "on" : ""}">${PN[x][1]} ${esc(PN[x][0])}</button>`).join("") + `</div>`;
+    h += `<div class="ar-sm2">Відносини з Україною: <b>${rel == null ? "—" : rel}</b> · вузол вильоту: ${esc(NODES[P.hub].n)} · мін. відносини ${CFG.MIN_REL}</div>`;
+    if (P.presets && P.presets.length) h += `<div class="ar-flt">` + P.presets.map((pr, i) => `<button data-a="preset" data-v="${i}">${esc(pr[0])}</button>`).join("") + `</div>`;
+    h += `<table class="ar-tb"><thead><tr><th>Перелік</th><th>Доступно</th><th>Макс.</th><th>Кількість</th></tr></thead><tbody>`;
+    let kg = 0, n = 0;
+    for (const l of P.lines) {
+      const av = Math.floor(ST.avail[p][l.k] + 1e-9), q = Math.min(ST.draft[l.k] | 0, av, l.max);
+      kg += q * ITEMS[l.k].kg; n += q;
+      h += `<tr><td><b>${esc(ITEMS[l.k].n)}</b><small>${ITEMS[l.k].cat} · ${fmtKg(ITEMS[l.k].kg)}/од. · ${isAir(l.k) ? "Ан-26" : "наземний коридор"}</small></td><td class="n">${av}</td><td class="n">${l.max}</td><td class="n"><button class="ar-sm" data-a="dec" data-v="${l.k}">−</button><input type="number" min="0" max="${Math.min(av, l.max)}" value="${q}" data-k="${l.k}" class="ar-in"><button class="ar-sm" data-a="inc" data-v="${l.k}">+</button></td></tr>`;
+    }
+    h += `</tbody></table>`;
+    const want = {}; for (const l of P.lines) { const q = Math.min(ST.draft[l.k] | 0, Math.floor(ST.avail[p][l.k] + 1e-9), l.max); if (q > 0) want[l.k] = q; }
+    const pk = packLegs(Object.keys(want).map(k => ({ k, q: want[k] })));
+    const err = n ? validate(p, want) : "";
+    h += `<div class="ar-sum2">Разом: <b>${n}</b> од. · ${fmtKg(kg)} · рейсів Ан-26: <b>${pk.air.length}</b>${pk.ground.length ? " + наземний коридор" : ""} · формування ≈ ${CFG.FORM_BASE + CFG.FORM_PER_LINE * Object.keys(want).length} хв</div>`;
+    if (err) h += `<div class="ar-note bd">${esc(err)}</div>`;
+    h += `<div class="ar-act"><button class="go" data-a="send" ${n && !err ? "" : "disabled"}>Запросити партію</button><button data-a="clear">Очистити</button></div>`;
+    return h;
+  }
+  function tabAc() {
+    let h = `<div class="ar-sm2">Транспортні літаки Ан-26: корисне навантаження ${fmtKg(CFG.PAYLOAD_KG)}, крейсерська ≈ ${Math.round(CFG.CRUISE_KMM * 60)} км/год. Борт, що втрачено, замінюється через ${Math.round(CFG.REPLACE_MIN / 60)} год.</div>`;
+    const t = now();
+    for (const a of ST.ac) {
+      const leg = a.leg && ST.legs.find(l => l.id === a.leg), s = leg && ST.ships.find(x => x.id === leg.ship);
+      const stt = { parked: "На стоянці", busy: "Призначено", ferry: "Перегін до вузла", loading: "Завантаження", flying: "У польоті", unloading: "Розвантаження", lost: "Втрачено" }[a.st] || a.st;
+      const eta = a.ph && a.ph.t1 > t ? Math.ceil(a.ph.t1 - t) : 0;
+      h += `<div class="ar-ac ${a.st === "lost" ? "lost" : ""}"><b>✈ ${esc(a.name)}</b>${chip(stt, a.st === "lost" ? "bd" : a.st === "flying" ? "bl" : "mu")}<div class="ar-sm2">${a.st === "lost" ? `заміна через ${Math.max(0, Math.ceil(a.respawn - t))} хв` : `${esc(NODES[a.at].n)}${s ? ` · партія ${s.code} · вантаж ${fmtKg(leg.kg)}` : ""}${eta ? ` · фаза ≈ ${eta} хв` : ""}`}</div>` +
+        (a.pos && a.st !== "lost" ? `<button class="ar-sm" data-a="focus" data-v="${a.id}">Показати на мапі</button>` : "") + `</div>`;
+    }
+    return h;
+  }
+  function tabOps() {
+    const F = ST.flt, f = [["all", "Усі"], ["receipt", "Надходження"], ["out", "Списання"], ["loss", "Втрати"]];
+    let h = `<div class="ar-flt">` + f.map(([k, n]) => `<button data-a="flt" data-v="${k}" class="${F === k ? "on" : ""}">${n}</button>`).join("") + `</div>`;
+    const tot = k => KEYS.reduce((a, x) => a + sum(ST.tot[k], x), 0);
+    h += `<div class="ar-sm2">Усього: надійшло <b class="ok">${tot("rcv")}</b> · передано у війська <b>${tot("rel")}</b> · знищено на складі <b class="bd">${tot("str")}</b> · втрачено в дорозі <b class="bd">${tot("loss")}</b> · повернено партнерам ${tot("ref")}</div>`;
+    const rows = ST.led.filter(o => o.kind !== "reserve").filter(o => F === "all" || (F === "receipt" && o.kind === "receipt") || (F === "out" && (o.kind === "release" || o.kind === "strike")) || (F === "loss" && (o.kind === "loss" || o.kind === "strike"))).slice(-120).reverse();
+    if (!rows.length) return h + `<div class="ar-empty">Операцій немає.</div>`;
+    h += `<table class="ar-tb sm"><thead><tr><th>№</th><th>Час</th><th>Операція</th><th>Позиція</th><th>К-сть</th><th>Залишок</th><th>Документ</th></tr></thead><tbody>` +
+      rows.map(o => { const [tx, c] = KIND[o.kind]; const sign = o.kind === "receipt" ? "+" : o.kind === "release" || o.kind === "strike" ? "−" : ""; return `<tr><td>${o.id}</td><td>${fmtT(o.t)}</td><td class="${c}">${tx}</td><td>${esc(ITEMS[o.key].n)}</td><td class="n ${c}">${sign}${o.qty}</td><td class="n">${o.kind === "loss" || o.kind === "refund" ? "—" : o.bal}</td><td>${esc(o.ref)}${o.note ? " · " + esc(o.note) : ""}</td></tr>`; }).join("") + `</tbody></table>`;
+    if (EVLOG.length) h += `<div class="ar-ev">` + EVLOG.slice(-8).reverse().map(e => `<div>${fmtT(e.t)} ${e.ic} ${esc(e.tx)}</div>`).join("") + `</div>`;
+    return h;
+  }
+  function renderPanel(force) {
+    if (!panel || panel.hidden) return;
+    const ae = document.activeElement; if (!force && ae && panel.contains(ae) && ae.tagName === "INPUT" && ae.type === "number") return;
+    const sig = [ST.tab, ST.gid, ST.led.length, ST.ships.length, ST.partner, ST.flt, ST.openShip, JSON.stringify(ST.draft), ST.ships.map(s => s.status).join(), ST.ac.map(a => a.st + (a.ph ? a.ph.k : "")).join(), Math.floor(now() / 5), ST.audit && ST.audit.t, ST.auto, G.on, active()].join("|");
+    if (!force && sig === ST.sig) return; ST.sig = sig;
+    let body;
+    if (!G.on) body = `<div class="ar-empty">Поставки доступні під час бою. Почніть гру за Україну.</div>`;
+    else if (!active()) body = `<div class="ar-empty">Міжнародні поставки доступні лише гравцю за Україну (не в мережевому бою).</div>`;
+    else body = ({ wh: tabWh, ships: tabShips, new: tabNew, ac: tabAc, ops: tabOps }[ST.tab] || tabWh)();
+    const st = panel.querySelector(".ar-body"), sc = st ? st.scrollTop : 0;
+    panel.innerHTML = `<div class="ar-hd"><b>📦 Поставки · склад Львів</b><button data-a="close" class="ar-x" aria-label="Закрити">×</button></div>${G.on && active() ? tabsHtml() : ""}<div class="ar-body">${body}</div>`;
+    const nb = panel.querySelector(".ar-body"); if (nb) nb.scrollTop = sc;
+  }
+  function onClick(e) {
+    const b = e.target.closest("[data-a]"); if (!b || b.tagName === "INPUT") return; e.stopPropagation();
+    const a = b.dataset.a, v = b.dataset.v, P = PARTNERS[ST.partner];
+    if (a === "close") panel.hidden = true;
+    else if (a === "tab") ST.tab = v;
+    else if (a === "open") ST.openShip = ST.openShip == (+v) ? null : +v;
+    else if (a === "partner") { ST.partner = v; ST.draft = {}; }
+    else if (a === "preset") { ST.draft = {}; for (const k in P.presets[+v][1]) { const l = P.lines.find(x => x.k === k); if (l) ST.draft[k] = Math.min(P.presets[+v][1][k], l.max, Math.floor(ST.avail[ST.partner][k])); } }
+    else if (a === "inc" || a === "dec") { const l = P.lines.find(x => x.k === v); ST.draft[v] = clamp((ST.draft[v] | 0) + (a === "inc" ? 1 : -1), 0, Math.min(l.max, Math.floor(ST.avail[ST.partner][v]))); }
+    else if (a === "clear") ST.draft = {};
+    else if (a === "send") { const want = {}; for (const l of P.lines) { const q = Math.min(ST.draft[l.k] | 0, Math.floor(ST.avail[ST.partner][l.k] + 1e-9), l.max); if (q > 0) want[l.k] = q; } if (request(ST.partner, want).ok) { ST.draft = {}; ST.tab = "ships"; } }
+    else if (a === "cancel") cancel(+v);
+    else if (a === "rel") release(v, ST.inv[v] | 0);
+    else if (a === "relall") { const n = releaseAll(); if (n) toast(`Передано у війська: ${n} од.`); }
+    else if (a === "audit") audit();
+    else if (a === "flt") ST.flt = v;
+    else if (a === "focus") { const ac = ST.ac.find(x => x.id === +v); if (ac && ac.pos) map.easeTo({ center: ac.pos, zoom: Math.max(map.getZoom(), 8) }); }
+    renderPanel(true);
+  }
+  function onChange(e) {
+    const t = e.target;
+    if (t.dataset && t.dataset.a === "auto") { ST.auto = t.checked; return; }
+    if (t.classList.contains("ar-in")) { const k = t.dataset.k, l = PARTNERS[ST.partner].lines.find(x => x.k === k); ST.draft[k] = clamp(parseInt(t.value, 10) || 0, 0, Math.min(l.max, Math.floor(ST.avail[ST.partner][k]))); renderPanel(true); }
+  }
+
+  /* ---------- підключення до гри ---------- */
+  const prevStart = S7.onGameStart;
+  S7.onGameStart = function () { fresh(); lastSig = ""; ST.sig = ""; return prevStart ? prevStart.apply(this, arguments) : undefined; };
+  const prevFx = H.HOOKS.fx;
+  H.HOOKS.fx = function (p, k) { try { onHit(p, k); } catch (e) { /* */ } return prevFx ? prevFx.apply(this, arguments) : undefined; };
+
+  mount();
+  setInterval(() => { try { mount(); step(); } catch (e) { if (window.console) console.error("[arms]", e); } }, 150);
+
+  window.BV_ARMS = {
+    request, cancel, release, releaseAll, audit, cfg: CFG, items: ITEMS, partners: PARTNERS, nodes: NODES,
+    state: () => ST, stock: () => Object.assign({}, ST.inv), ledger: () => ST.led.slice(), ships: () => ST.ships.map(s => Object.assign({}, s, { lines: s.lines.map(l => Object.assign({}, l)) })),
+    aircraft: () => ST.ac.map(a => ({ id: a.id, name: a.name, st: a.st, at: a.at, pos: a.pos, load: a.load })),
+    open: openPanel, whUsed, whFree, _post: post, _hit: onHit, _step: step, _fresh: fresh
+  };
 })();
 </script>
 </body>
